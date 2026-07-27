@@ -1,0 +1,6 @@
+{
+  "appId": "com.cowcollar.ai",
+  "appName": "CowCollar AI",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

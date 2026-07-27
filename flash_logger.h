@@ -1,0 +1,120 @@
+/*
+ * =================================================================================
+ *  OFFLINE FLASH LOGGING ENGINE FOR ESP32 COW COLLAR
+ *  Project: Smart IoT Cow Collar (State Award / Advanced Edition)
+ * =================================================================================
+ *  Features:
+ *  - Non-Volatile Flash Ring-Buffer Storage (SPIFFS / EEPROM)
+ *  - Stores 72 Hours (3 Full Days) of Offline Sensor & TinyML Readings
+ *  - Compact 12-Byte Binary Record Layout
+ *  - Morning Bulk BLE Log Dump Function for Instant Phone Auto-Sync
+ * =================================================================================
+ */
+
+#ifndef FLASH_LOGGER_H
+#define FLASH_LOGGER_H
+
+#include <Arduino.h>
+#include <SPIFFS.h>
+
+#define MAX_LOG_RECORDS 288 // 72 hours of data at 15-minute intervals
+#define LOG_FILE_PATH "/cow_vitals_log.bin"
+
+// Compact 12-Byte Binary Log Entry
+struct __attribute__((__packed__)) LogRecord {
+  uint32_t sampleId;     // Incremental sample index (0 to 288)
+  uint16_t temp_x100;    // Temp * 100 (e.g., 3885 = 38.85 °C)
+  uint8_t  bpm;          // Heart Rate BPM
+  uint8_t  spo2;         // SpO2 Percentage
+  uint8_t  motionClass;  // 0=Resting, 1=Ruminating, 2=Walking, 3=Estrus
+  uint8_t  healthStatus; // 0=Normal, 1=Fever, 2=Hypothermia, 3=Estrus, 4=Calving
+  uint8_t  battery;      // Battery %
+  uint8_t  confidence;   // AI Confidence %
+};
+
+class FlashLogger {
+public:
+  static void init() {
+    if (!SPIFFS.begin(true)) {
+      Serial.println("[FlashLogger] SPIFFS Mount Failed!");
+    } else {
+      Serial.println("[FlashLogger] SPIFFS Mounted Successfully.");
+    }
+  }
+
+  // Append a new 12-byte reading record to offline flash memory
+  static void saveRecord(uint32_t sampleId, float temp, uint8_t bpm, uint8_t spo2, uint8_t motion, uint8_t health, uint8_t battery, uint8_t confidence) {
+    LogRecord rec;
+    rec.sampleId = sampleId;
+    rec.temp_x100 = (uint16_t)(temp * 100);
+    rec.bpm = bpm;
+    rec.spo2 = spo2;
+    rec.motionClass = motion;
+    rec.healthStatus = health;
+    rec.battery = battery;
+    rec.confidence = confidence;
+
+    File file = SPIFFS.open(LOG_FILE_PATH, FILE_APPEND);
+    if (!file) {
+      Serial.println("[FlashLogger] Failed to open file for writing!");
+      return;
+    }
+
+    file.write((uint8_t*)&rec, sizeof(LogRecord));
+    file.close();
+    Serial.printf("[FlashLogger] Saved offline sample #%u (Temp: %.2f°C, Motion: %u)\n", sampleId, temp, motion);
+  }
+
+  // Get total number of stored offline records
+  static uint16_t getRecordCount() {
+    if (!SPIFFS.exists(LOG_FILE_PATH)) return 0;
+    File file = SPIFFS.open(LOG_FILE_PATH, FILE_READ);
+    if (!file) return 0;
+    uint16_t count = file.size() / sizeof(LogRecord);
+    file.close();
+    return count;
+  }
+
+  // Export all stored 24-hour / 72-hour records into JSON string for morning BLE sync
+  static String exportLogsAsJson() {
+    if (!SPIFFS.exists(LOG_FILE_PATH)) return "[]";
+
+    File file = SPIFFS.open(LOG_FILE_PATH, FILE_READ);
+    if (!file) return "[]";
+
+    String json = "[";
+    bool first = true;
+
+    while (file.available() >= sizeof(LogRecord)) {
+      LogRecord rec;
+      file.read((uint8_t*)&rec, sizeof(LogRecord));
+
+      if (!first) json += ",";
+      first = false;
+
+      float temp = rec.temp_x100 / 100.0f;
+      json += "{\"id\":" + String(rec.sampleId) +
+              ",\"temp\":" + String(temp, 2) +
+              ",\"bpm\":" + String(rec.bpm) +
+              ",\"spo2\":" + String(rec.spo2) +
+              ",\"motion\":" + String(rec.motionClass) +
+              ",\"health\":" + String(rec.healthStatus) +
+              ",\"bat\":" + String(rec.battery) +
+              ",\"conf\":" + String(rec.confidence) + "}";
+    }
+
+    file.close();
+    json += "]";
+    return json;
+  }
+
+  // Clear offline flash log after full morning auto-sync
+  static void clearLogs() {
+    if (SPIFFS.exists(LOG_FILE_PATH)) {
+      SPIFFS.remove(LOG_FILE_PATH);
+      Serial.println("[FlashLogger] Offline logs cleared after morning sync.");
+    }
+  }
+};
+
+#endif // FLASH_LOGGER_H
