@@ -17,6 +17,7 @@ class BleService {
     this.simInterval = null;
     this.isCapacitor = false;
     this.realDeviceTimeline = [];
+    this.isFlashLogsSynced = false;
   }
 
   onData(callback) {
@@ -82,6 +83,7 @@ class BleService {
 
     const newRecord = {
       id: parsed.id || Date.now(),
+      timestampMs: Date.now(),
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       temp: Number(parsed.temp) || 0,
       bpm: Number(parsed.bpm) || 0,
@@ -92,30 +94,45 @@ class BleService {
       conf: Number(parsed.conf) || 95
     };
 
-    if (this.realDeviceTimeline.length === 0) {
-      this.realDeviceTimeline.push(newRecord);
-    } else {
-      const lastRec = this.realDeviceTimeline[this.realDeviceTimeline.length - 1];
-      if (Date.now() - (lastRec.timestampMs || 0) > 2500) {
-        newRecord.timestampMs = Date.now();
-        this.realDeviceTimeline.push(newRecord);
-        if (this.realDeviceTimeline.length > 288) {
-          this.realDeviceTimeline.shift();
-        }
-      } else {
-        newRecord.timestampMs = lastRec.timestampMs || Date.now();
-        this.realDeviceTimeline[this.realDeviceTimeline.length - 1] = newRecord;
-      }
+    if (!this.realDeviceTimeline || this.realDeviceTimeline.length === 0) {
+      this.realDeviceTimeline = [newRecord];
+      this.notifyTimelineListeners(this.realDeviceTimeline);
+      return;
     }
 
-    this.notifyTimelineListeners(this.realDeviceTimeline);
+    const lastRec = this.realDeviceTimeline[this.realDeviceTimeline.length - 1];
+    const timeDiff = Date.now() - (lastRec.timestampMs || 0);
+
+    // Only append new timeline point every 5 minutes (300,000 ms) to lock 24h ratio stability
+    if (timeDiff >= 300000) {
+      this.realDeviceTimeline.push(newRecord);
+      if (this.realDeviceTimeline.length > 288) {
+        this.realDeviceTimeline.shift();
+      }
+      this.notifyTimelineListeners(this.realDeviceTimeline);
+    } else {
+      // Update latest entry in place for live vitals without altering total sample count
+      this.realDeviceTimeline[this.realDeviceTimeline.length - 1] = {
+        ...lastRec,
+        temp: newRecord.temp,
+        bpm: newRecord.bpm,
+        spo2: newRecord.spo2,
+        motion: newRecord.motion,
+        health: newRecord.health,
+        bat: newRecord.bat
+      };
+      if (!this.isFlashLogsSynced) {
+        this.notifyTimelineListeners(this.realDeviceTimeline);
+      }
+    }
   }
 
   setRealFlashLogs(logsArray) {
     if (Array.isArray(logsArray) && logsArray.length > 0) {
-      const formatted = logsArray.map(item => ({
-        id: item.id || Math.random(),
-        time: item.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      const formatted = logsArray.map((item, idx) => ({
+        id: item.id || idx + 1,
+        timestampMs: Date.now() - (logsArray.length - idx) * 300000,
+        time: item.time || new Date(Date.now() - (logsArray.length - idx) * 300000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         temp: Number(item.temp) || 0,
         bpm: Number(item.bpm) || 0,
         spo2: Number(item.spo2) || 0,
@@ -125,6 +142,7 @@ class BleService {
         conf: Number(item.conf) || 95
       }));
       this.realDeviceTimeline = formatted;
+      this.isFlashLogsSynced = true;
       this.notifyTimelineListeners(this.realDeviceTimeline);
     }
   }
