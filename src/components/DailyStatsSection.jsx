@@ -54,13 +54,19 @@ export default function DailyStatsSection({ timelineData = [] }) {
   const avgBpm = validBpmCount > 0 ? Math.round(bpmSum / validBpmCount) : 68;
   const avgSpo2 = validBpmCount > 0 ? Math.round(spo2Sum / validBpmCount) : 98;
 
-  const restHours = +(restSamples * sampleDurationHours).toFixed(1);
-  const ruminateHours = +(ruminateSamples * sampleDurationHours).toFixed(1);
-  const walkHours = +(walkSamples * sampleDurationHours).toFixed(1);
-  const estrusHours = +(estrusSamples * sampleDurationHours).toFixed(1);
+  // Proportional 24-Hour Behavioral Hour Allocation (Guarantees smooth, stable 24h total)
+  const restRatio = restSamples / totalSamples;
+  const ruminateRatio = ruminateSamples / totalSamples;
+  const walkRatio = walkSamples / totalSamples;
+  const estrusRatio = estrusSamples / totalSamples;
 
-  // Movement activity score (0 - 10,000 steps equivalent)
-  const estimatedSteps = Math.round(walkHours * 1420 + estrusHours * 2800 + ruminateHours * 210);
+  const restHours = +(restRatio * 24.0).toFixed(1);
+  const ruminateHours = +(ruminateRatio * 24.0).toFixed(1);
+  const walkHours = +(walkRatio * 24.0).toFixed(1);
+  const estrusHours = +(estrusRatio * 24.0).toFixed(1);
+
+  // Calibrated Movement Index & Step Count (0 - 4,500 realistic daily range)
+  const estimatedSteps = Math.round(walkHours * 650 + estrusHours * 1400 + ruminateHours * 80);
 
   // Health Score Calculation (0 - 100)
   let healthScore = 100;
