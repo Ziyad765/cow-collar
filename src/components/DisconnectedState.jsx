@@ -1,3 +1,5 @@
+import React from 'react';
+import { Bluetooth, Sparkles, Activity, ShieldCheck, Zap, Radio } from 'lucide-react';
 import DailyStatsSection from './DailyStatsSection';
 import TimelineSection from './TimelineSection';
 
