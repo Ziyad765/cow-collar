@@ -172,6 +172,20 @@ class BleService {
             }
           }
         );
+
+        // Direct GATT read for instant 1-Day log sync
+        try {
+          const logVal = await BleClient.read(this.deviceId, SERVICE_UUID, LOG_CHAR_UUID);
+          const decoder = new TextDecoder('utf-8');
+          const rawValue = decoder.decode(logVal.value || logVal);
+          if (rawValue && rawValue.startsWith('[')) {
+            const logsArray = JSON.parse(rawValue);
+            if (Array.isArray(logsArray) && logsArray.length > 0) {
+              this.addPacketLog('sync', `Direct Read Sync: ${logsArray.length} records received`, rawValue);
+              this.notifyTimelineListeners(logsArray);
+            }
+          }
+        } catch (readErr) {}
       } catch (logErr) {}
 
       this.isConnected = true;

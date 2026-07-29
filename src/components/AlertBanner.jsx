@@ -55,7 +55,17 @@ const ALERTS = {
 };
 
 export default function AlertBanner({ healthStatus = 0, temp = 38.8 }) {
-  const alert = ALERTS[healthStatus] || ALERTS[0];
+  let effectiveStatus = Number(healthStatus) || 0;
+  const numTemp = Number(temp);
+
+  // Temperature threshold evaluation
+  if (numTemp > 39.5) {
+    effectiveStatus = 1; // High Fever Alert
+  } else if (numTemp < 38.0 && numTemp > 0) {
+    effectiveStatus = 2; // Low Body Temp Warning
+  }
+
+  const alert = ALERTS[effectiveStatus] || ALERTS[0];
   const subtitleText = typeof alert.subtitle === 'function' ? alert.subtitle(temp) : alert.subtitle;
 
   return (

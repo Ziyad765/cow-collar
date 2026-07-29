@@ -429,6 +429,14 @@ void loop() {
   }
   if (deviceConnected && !oldDeviceConnected) {
     oldDeviceConnected = deviceConnected;
+    // Delayed Log Transmission to guarantee phone BLE subscription is ready!
+    delay(1000);
+    String logsJson = FlashLogger::exportLogsAsJson(500);
+    if (pLogCharacteristic) {
+      pLogCharacteristic->setValue(logsJson.c_str());
+      pLogCharacteristic->notify();
+      Serial.printf("--> Delayed Sync: Transmitted %u stored offline records to phone!\n", FlashLogger::getRecordCount());
+    }
   }
 
   // 4. Feed Hardware Watchdog Timer to prevent lockups
