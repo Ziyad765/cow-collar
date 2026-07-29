@@ -16,6 +16,7 @@ class BleService {
     this.packetLogs = [];
     this.simInterval = null;
     this.isCapacitor = false;
+    this.realDeviceTimeline = [];
   }
 
   onData(callback) {
@@ -76,6 +77,58 @@ class BleService {
     this.timelineListeners.forEach(cb => cb(data));
   }
 
+  processIncomingRealVitals(parsed) {
+    if (!parsed || parsed.temp === undefined) return;
+
+    const newRecord = {
+      id: parsed.id || Date.now(),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      temp: Number(parsed.temp) || 0,
+      bpm: Number(parsed.bpm) || 0,
+      spo2: Number(parsed.spo2) || 0,
+      motion: Number(parsed.motion) ?? 0,
+      health: Number(parsed.health) ?? 0,
+      bat: Number(parsed.bat) || 100,
+      conf: Number(parsed.conf) || 95
+    };
+
+    if (this.realDeviceTimeline.length === 0) {
+      this.realDeviceTimeline.push(newRecord);
+    } else {
+      const lastRec = this.realDeviceTimeline[this.realDeviceTimeline.length - 1];
+      if (Date.now() - (lastRec.timestampMs || 0) > 2500) {
+        newRecord.timestampMs = Date.now();
+        this.realDeviceTimeline.push(newRecord);
+        if (this.realDeviceTimeline.length > 288) {
+          this.realDeviceTimeline.shift();
+        }
+      } else {
+        newRecord.timestampMs = lastRec.timestampMs || Date.now();
+        this.realDeviceTimeline[this.realDeviceTimeline.length - 1] = newRecord;
+      }
+    }
+
+    this.notifyTimelineListeners(this.realDeviceTimeline);
+  }
+
+  setRealFlashLogs(logsArray) {
+    if (Array.isArray(logsArray) && logsArray.length > 0) {
+      const formatted = logsArray.map(item => ({
+        id: item.id || Math.random(),
+        time: item.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        temp: Number(item.temp) || 0,
+        bpm: Number(item.bpm) || 0,
+        spo2: Number(item.spo2) || 0,
+        motion: Number(item.motion) ?? 0,
+        health: Number(item.health) ?? 0,
+        bat: Number(item.bat) || 100,
+        conf: Number(item.conf) || 95
+      }));
+      this.realDeviceTimeline = formatted;
+      this.notifyTimelineListeners(this.realDeviceTimeline);
+    }
+  }
+
   generateDefault24hTimeline() {
     const simTimeline = [];
     const now = new Date();
@@ -112,6 +165,7 @@ class BleService {
 
   async connectRealDevice() {
     this.stopSimulator();
+    this.realDeviceTimeline = []; // Reset real device timeline on new connection
     this.addPacketLog('info', 'Initiating BLE connection to CowCollar_EdgeAI...');
 
     // 1. Native Capacitor BLE (Safe Dynamic Import)
@@ -148,6 +202,7 @@ class BleService {
             const parsed = JSON.parse(rawValue);
             this.addPacketLog('stream', `LIVE RX: ${parsed.temp}°C | ${parsed.bpm} BPM | ${parsed.spo2}% SpO2`, rawValue);
             this.notifyListeners({ status: 'live', data: parsed });
+            this.processIncomingRealVitals(parsed);
           } catch (err) {
             this.addPacketLog('error', 'BLE Packet parse error', rawValue);
           }
@@ -166,7 +221,7 @@ class BleService {
             try {
               const logsArray = JSON.parse(rawValue);
               this.addPacketLog('sync', `24h Flash Log Sync: ${logsArray.length} records received`, rawValue);
-              this.notifyTimelineListeners(logsArray);
+              this.setRealFlashLogs(logsArray);
             } catch (err) {
               console.error('Timeline parse error:', rawValue);
             }
@@ -182,7 +237,7 @@ class BleService {
             const logsArray = JSON.parse(rawValue);
             if (Array.isArray(logsArray) && logsArray.length > 0) {
               this.addPacketLog('sync', `Direct Read Sync: ${logsArray.length} records received`, rawValue);
-              this.notifyTimelineListeners(logsArray);
+              this.setRealFlashLogs(logsArray);
             }
           }
         } catch (readErr) {}
@@ -227,6 +282,7 @@ class BleService {
             const parsed = JSON.parse(rawValue);
             this.addPacketLog('stream', `LIVE RX: ${parsed.temp}°C | ${parsed.bpm} BPM | ${parsed.spo2}% SpO2`, rawValue);
             this.notifyListeners({ status: 'live', data: parsed });
+            this.processIncomingRealVitals(parsed);
           } catch (err) {
             this.addPacketLog('error', 'BLE Parse error', rawValue);
           }
@@ -242,7 +298,7 @@ class BleService {
             try {
               const logsArray = JSON.parse(rawValue);
               this.addPacketLog('sync', `Web BLE 24h Log Sync: ${logsArray.length} records received`, rawValue);
-              this.notifyTimelineListeners(logsArray);
+              this.setRealFlashLogs(logsArray);
             } catch (err) {}
           });
         } catch (webLogErr) {}
