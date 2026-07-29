@@ -17,6 +17,7 @@
 #include "spo2_algorithm.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <esp_task_wdt.h>
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -31,6 +32,7 @@
 #define ALWAYS_ON_BLE_TESTING 1 
 #define OFFLINE_SLEEP_MINUTES 5 
 #define uS_TO_S_FACTOR 1000000ULL
+#define WDT_TIMEOUT 30 // 30-Second Hardware Watchdog Timeout
 
 // Skin Contact Threshold (MAX30102 IR Reflection)
 #define SKIN_CONTACT_THRESHOLD 30000 
@@ -94,12 +96,12 @@ class MyServerCallbacks: public BLEServerCallbacks {
       Serial.println("\n>>> Phone Connected! Waking up MAX30102 LEDs for High-Frequency Live Streaming <<<");
       particleSensor.wakeUp();
       
-      // Bulk-sync stored offline 24-hour log buffer over BLE
+      // Bulk-sync stored offline 24-hour log buffer over BLE (Persistent ring buffer - retained for multi-phone access)
       String logsJson = FlashLogger::exportLogsAsJson();
       if (pLogCharacteristic) {
         pLogCharacteristic->setValue(logsJson.c_str());
         pLogCharacteristic->notify();
-        Serial.printf("--> Transmitted %u stored offline records to phone!\n", FlashLogger::getRecordCount());
+        Serial.printf("--> Transmitted %u stored offline records to phone! Logs preserved in flash memory for multi-phone access.\n", FlashLogger::getRecordCount());
       }
     };
 
@@ -119,11 +121,27 @@ void setup() {
   Serial.println(" HOSPITAL-GRADE HIGH-FREQUENCY ESP32 COW COLLAR FIRMWARE ");
   Serial.println("=======================================================\n");
 
-  // 1. Initialize SPIFFS Offline Flash Logger
+  // 1. Initialize Hardware Watchdog Timer (Sealed Enclosure Protection)
+#if defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5)
+  esp_task_wdt_config_t twdt_config = {
+      .timeout_ms = WDT_TIMEOUT * 1000,
+      .idle_core_mask = 0,
+      .trigger_panic = true
+  };
+  esp_task_wdt_reconfigure(&twdt_config);
+  esp_task_wdt_add(NULL);
+#else
+  esp_task_wdt_init(WDT_TIMEOUT, true);
+  esp_task_wdt_add(NULL);
+#endif
+  Serial.println("[System] Hardware Watchdog Timer (30s) ACTIVE");
+
+  // 2. Initialize SPIFFS Offline Flash Logger
   FlashLogger::init();
 
-  // 2. Initialize MPU6050 Motion Sensor (I2C Bus 0)
+  // 3. Initialize MPU6050 Motion Sensor (I2C Bus 0)
   I2C_MPU.begin(MPU_SDA, MPU_SCL, 400000);
+  I2C_MPU.setTimeOut(100);
   if (mpu.begin(0x68, &I2C_MPU)) {
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
     mpu.setGyroRange(MPU6050_RANGE_500_DEG);
@@ -131,19 +149,20 @@ void setup() {
     Serial.println("[Hardware] MPU6050 Motion Sensor: OK");
   }
 
-  // 3. Initialize MAX30102 Biosensor (I2C Bus 1)
+  // 4. Initialize MAX30102 Biosensor (I2C Bus 1)
   I2C_MAX.begin(MAX_SDA, MAX_SCL, 400000);
+  I2C_MAX.setTimeOut(100);
   if (particleSensor.begin(I2C_MAX, I2C_SPEED_FAST)) {
     particleSensor.setup(0x1F, 4, 2, 100, 411, 4096);
     particleSensor.shutDown();
     Serial.println("[Hardware] MAX30102 Heart/SpO2 Sensor: OK (LEDs Shut Down for Battery Saving)");
   }
 
-  // 4. Initialize DS18B20 Temp Probe (OneWire)
+  // 5. Initialize DS18B20 Temp Probe (OneWire)
   tempSensor.begin();
   Serial.println("[Hardware] DS18B20 Temp Probe: OK");
 
-  // 5. Initialize BLE GATT Server
+  // 6. Initialize BLE GATT Server
   BLEDevice::init("CowCollar_EdgeAI");
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
@@ -283,6 +302,9 @@ void performFastVitalsReading(float &outTemp, int32_t &outBpm, int32_t &outSpo2,
   outConfidence = (uint8_t)(aiResult.confidence * 100.0);
 }
 
+unsigned long lastOfflineLogTime = 0;
+#define OFFLINE_PERIODIC_INTERVAL_MS 5000 // 5 seconds in active test mode (or 5-15 mins in field mode)
+
 void loop() {
   float bodyTemp;
   int32_t bpm, spo2Val;
@@ -293,8 +315,20 @@ void loop() {
   performFastVitalsReading(bodyTemp, bpm, spo2Val, motionClass, healthStatus, confidence, skinContact);
   uint8_t batteryPct = 94;
 
-  if (skinContact) {
-    FlashLogger::saveRecord(sampleCounter, bodyTemp, (uint8_t)bpm, (uint8_t)spo2Val, (uint8_t)motionClass, (uint8_t)healthStatus, batteryPct, confidence);
+  bool isHeavyMovementTrigger = (motionClass == 3 || healthStatus > 0); // Estrus heat / Fever spike / High motion
+  bool isPeriodicIntervalDue = (millis() - lastOfflineLogTime >= OFFLINE_PERIODIC_INTERVAL_MS);
+
+  // 1. OFFLINE FLASH LOGGING (Adaptive Dual-Trigger System)
+  if (!deviceConnected && skinContact) {
+    if (isHeavyMovementTrigger) {
+      FlashLogger::saveRecord(sampleCounter, bodyTemp, (uint8_t)bpm, (uint8_t)spo2Val, (uint8_t)motionClass, (uint8_t)healthStatus, batteryPct, confidence);
+      lastOfflineLogTime = millis();
+      Serial.printf("[OFFLINE MOTION TRIGGER] ⚡ Heavy movement / Heat detected! Instant record #%u logged.\n", sampleCounter);
+    } else if (isPeriodicIntervalDue) {
+      FlashLogger::saveRecord(sampleCounter, bodyTemp, (uint8_t)bpm, (uint8_t)spo2Val, (uint8_t)motionClass, (uint8_t)healthStatus, batteryPct, confidence);
+      lastOfflineLogTime = millis();
+      Serial.printf("[OFFLINE PERIODIC SAMPLING] 🌿 Rest/Rumination baseline sample #%u logged.\n", sampleCounter);
+    }
   }
 
   char jsonBuffer[180];
@@ -303,7 +337,7 @@ void loop() {
     bodyTemp, (int)bpm, (int)spo2Val, motionClass, healthStatus, batteryPct, confidence, skinContact ? "true" : "false"
   );
 
-  // High-Frequency Real-Time Streaming when connected to phone
+  // 2. High-Frequency Real-Time Streaming when connected to phone
   if (deviceConnected) {
     pVitalsCharacteristic->setValue(jsonBuffer);
     pVitalsCharacteristic->notify();
@@ -311,8 +345,14 @@ void loop() {
     
     delay(150); // Fast 150ms stream rate (6-7 updates per second!)
   } else {
-    Serial.printf("[OFFLINE LOGGING] Contact: %s | Sample #%u saved.\n", skinContact ? "YES" : "NO", sampleCounter);
-    delay(1000);
+    delay(500); // 500ms sampling loop check when offline
+  }
+
+  // 3. BLE Advertising & Reconnect Safeguard (For Sealed Enclosures)
+  static unsigned long lastAdvCheck = 0;
+  if (!deviceConnected && (millis() - lastAdvCheck > 10000)) {
+    BLEDevice::startAdvertising();
+    lastAdvCheck = millis();
   }
 
   if (!deviceConnected && oldDeviceConnected) {
@@ -323,4 +363,7 @@ void loop() {
   if (deviceConnected && !oldDeviceConnected) {
     oldDeviceConnected = deviceConnected;
   }
+
+  // 4. Feed Hardware Watchdog Timer to prevent lockups
+  esp_task_wdt_reset();
 }

@@ -42,7 +42,42 @@ public:
     }
   }
 
-  // Append a new 12-byte reading record to offline flash memory
+  // Trim oldest records if log file exceeds MAX_LOG_RECORDS
+  static void trimOldestRecords() {
+    if (!SPIFFS.exists(LOG_FILE_PATH)) return;
+    File file = SPIFFS.open(LOG_FILE_PATH, FILE_READ);
+    if (!file) return;
+
+    size_t totalRecords = file.size() / sizeof(LogRecord);
+    if (totalRecords <= MAX_LOG_RECORDS) {
+      file.close();
+      return;
+    }
+
+    size_t skipRecords = totalRecords - MAX_LOG_RECORDS + 1;
+    file.seek(skipRecords * sizeof(LogRecord));
+
+    File tempFile = SPIFFS.open("/cow_vitals_tmp.bin", FILE_WRITE);
+    if (!tempFile) {
+      file.close();
+      return;
+    }
+
+    while (file.available() >= sizeof(LogRecord)) {
+      LogRecord rec;
+      file.read((uint8_t*)&rec, sizeof(LogRecord));
+      tempFile.write((uint8_t*)&rec, sizeof(LogRecord));
+    }
+
+    file.close();
+    tempFile.close();
+
+    SPIFFS.remove(LOG_FILE_PATH);
+    SPIFFS.rename("/cow_vitals_tmp.bin", LOG_FILE_PATH);
+    Serial.printf("[FlashLogger] Ring buffer trimmed: kept latest %u records.\n", MAX_LOG_RECORDS);
+  }
+
+  // Append a new 12-byte reading record to offline flash memory (Persistent Rolling Ring Buffer)
   static void saveRecord(uint32_t sampleId, float temp, uint8_t bpm, uint8_t spo2, uint8_t motion, uint8_t health, uint8_t battery, uint8_t confidence) {
     LogRecord rec;
     rec.sampleId = sampleId;
@@ -54,6 +89,11 @@ public:
     rec.battery = battery;
     rec.confidence = confidence;
 
+    // Enforce rolling ring buffer cap
+    if (getRecordCount() >= MAX_LOG_RECORDS) {
+      trimOldestRecords();
+    }
+
     File file = SPIFFS.open(LOG_FILE_PATH, FILE_APPEND);
     if (!file) {
       Serial.println("[FlashLogger] Failed to open file for writing!");
@@ -62,7 +102,7 @@ public:
 
     file.write((uint8_t*)&rec, sizeof(LogRecord));
     file.close();
-    Serial.printf("[FlashLogger] Saved offline sample #%u (Temp: %.2f°C, Motion: %u)\n", sampleId, temp, motion);
+    Serial.printf("[FlashLogger] Saved persistent offline sample #%u (Temp: %.2f°C, Motion: %u)\n", sampleId, temp, motion);
   }
 
   // Get total number of stored offline records
@@ -75,14 +115,23 @@ public:
     return count;
   }
 
-  // Export all stored 24-hour / 72-hour records into JSON string for morning BLE sync
+  // Export all stored 24-hour / 72-hour records into JSON string for multi-phone BLE sync
   static String exportLogsAsJson() {
     if (!SPIFFS.exists(LOG_FILE_PATH)) return "[]";
 
     File file = SPIFFS.open(LOG_FILE_PATH, FILE_READ);
     if (!file) return "[]";
 
-    String json = "[";
+    size_t count = file.size() / sizeof(LogRecord);
+    if (count == 0) {
+      file.close();
+      return "[]";
+    }
+
+    // Reserve string buffer memory to prevent ESP32 RAM fragmentation
+    String json = "";
+    json.reserve(count * 85 + 10);
+    json += "[";
     bool first = true;
 
     while (file.available() >= sizeof(LogRecord)) {
@@ -108,11 +157,11 @@ public:
     return json;
   }
 
-  // Clear offline flash log after full morning auto-sync
+  // Manual Factory Reset Clear Only (Never called automatically on phone sync)
   static void clearLogs() {
     if (SPIFFS.exists(LOG_FILE_PATH)) {
       SPIFFS.remove(LOG_FILE_PATH);
-      Serial.println("[FlashLogger] Offline logs cleared after morning sync.");
+      Serial.println("[FlashLogger] Offline logs reset via manual action.");
     }
   }
 };

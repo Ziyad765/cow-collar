@@ -3,15 +3,18 @@ import { Clock, TrendingUp, Share2, Sparkles, MessageCircle } from 'lucide-react
 
 export default function AnalyticsSection({ selectedCow = 'Lakshmi #104', temp = 38.8, healthStatus = 0 }) {
   const handleWhatsApp = () => {
-    const statusText = healthStatus === 1 ? '⚠️ FEVER DETECTED' : healthStatus === 3 ? '🔥 ESTRUS WINDOW OPEN' : healthStatus === 4 ? '🍼 CALVING SOON' : '✅ HEALTHY & NOMINAL';
+    const statusText = healthStatus === 1 ? '⚠️ FEVER DETECTED' : healthStatus === 3 ? '🔥 ESTRUS WINDOW OPEN' : healthStatus === 4 ? '🍼 CALVING SOON' : '✅ HEALTHY & OPTIMAL';
     const text = encodeURIComponent(
-      `🐄 *CowCollar AI — Cattle Health Report*\n` +
+      `🐄 *CowCollar AI — 24-Hour Smartwatch Health Report*\n` +
       `\n📌 Cattle: ${selectedCow}` +
-      `\n🌡️ Body Temp: ${temp}°C` +
-      `\n📊 Health Status: ${statusText}` +
-      `\n⏱️ Rumination: 8.4 hrs today` +
-      `\n🕒 Synced: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` +
-      `\n\n_Powered by CowCollar Edge AI System_`
+      `\n🌡️ Live Temp: ${temp}°C` +
+      `\n📊 Clinical Diagnosis: ${statusText}` +
+      `\n⏱️ 24h Rumination: 8.4 hrs (Healthy)` +
+      `\n😴 24h Sleep & Rest: 7.2 hrs` +
+      `\n👟 24h Active Grazing: 8.4 hrs` +
+      `\n💾 Synced via BLE Smartwatch Flash Log` +
+      `\n🕒 Report Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` +
+      `\n\n_Powered by CowCollar ESP32 Edge AI System_`
     );
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };

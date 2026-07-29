@@ -37,9 +37,31 @@ export default function DisconnectedState({ selectedCow, onConnectReal, onToggle
           Device Not Connected
         </h2>
         
-        <p style={{ fontSize: 13, color: '#64748B', fontWeight: 500, lineHeight: 1.5, maxWidth: 280, marginBottom: 20 }}>
-          No active Bluetooth signal received from <strong style={{ color: '#0F172A' }}>{selectedCow}'s</strong> smart collar.
+        <p style={{ fontSize: 13, color: '#64748B', fontWeight: 500, lineHeight: 1.5, maxWidth: 290, marginBottom: 14 }}>
+          No active Bluetooth connection to <strong style={{ color: '#0F172A' }}>{selectedCow}'s</strong> smart collar.
         </p>
+
+        {/* Offline Smartwatch Logging Banner */}
+        <div style={{
+          width: '100%',
+          background: '#F0FDF4',
+          borderRadius: 14,
+          padding: '10px 12px',
+          border: '1px solid #BBF7D0',
+          fontSize: 11,
+          color: '#166534',
+          fontWeight: 600,
+          textAlign: 'left',
+          marginBottom: 18,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <span style={{ fontSize: 16 }}>💾</span>
+          <span>
+            <strong>Collar is logging offline:</strong> Stores 24h vitals in Flash memory. Connect <em>any smartphone</em> at any time to sync 1-day cow statistics!
+          </span>
+        </div>
 
         {/* Action Buttons */}
         <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>

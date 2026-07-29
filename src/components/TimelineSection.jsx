@@ -18,8 +18,8 @@ export default function TimelineSection({ timelineData = [] }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div>
-            <h3 style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>24-Hour Offline Log</h3>
-            <p style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>Auto-synced from flash memory ring buffer</p>
+            <h3 style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>24-Hour Continuous Flash Log</h3>
+            <p style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>Persistent Ring Buffer · Multi-Phone Access</p>
           </div>
           <span style={{
             fontSize: 10,
@@ -30,7 +30,7 @@ export default function TimelineSection({ timelineData = [] }) {
             borderRadius: 99,
             border: `1px solid ${alerts.length > 0 ? '#FDE68A' : '#A7F3D0'}`
           }}>
-            {alerts.length > 0 ? `${alerts.length} Overnight Alert(s)` : '✔ All Nominal'}
+            {alerts.length > 0 ? `${alerts.length} Alert Period(s)` : '✔ All Nominal'}
           </span>
         </div>
 
@@ -39,22 +39,24 @@ export default function TimelineSection({ timelineData = [] }) {
           display: 'flex',
           alignItems: 'flex-end',
           gap: 3,
-          height: 52,
+          height: 56,
           background: '#F8FAFC',
           borderRadius: 12,
           padding: '8px',
           border: '1px solid #F1F5F9'
         }}>
-          {timelineData.slice(0, 24).map((item, idx) => {
+          {timelineData.slice(-24).map((item, idx) => {
             const isAlert = item.health > 0;
-            const barH = Math.min(100, Math.max(20, ((item.temp - 37.5) / 3.0) * 100));
+            const barH = Math.min(100, Math.max(25, (((item.temp || 38.5) - 37.5) / 2.5) * 100));
+            const barBg = item.motion === 3 ? '#F59E0B' : item.motion === 0 ? '#6366F1' : item.motion === 1 ? '#10B981' : '#0EA5E9';
+
             return (
-              <div key={idx} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+              <div key={idx} title={`Time: ${item.time || idx + ':00'} | Temp: ${item.temp}°C | Motion: ${item.motion}`} style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
                 <div style={{
                   width: '100%',
                   height: `${barH}%`,
                   borderRadius: 3,
-                  background: isAlert ? '#F59E0B' : item.motion === 0 ? '#6366F1' : '#10B981',
+                  background: isAlert ? '#EF4444' : barBg,
                   transition: 'height 0.4s ease'
                 }} />
               </div>
@@ -67,6 +69,23 @@ export default function TimelineSection({ timelineData = [] }) {
           <span>🌙 12 AM</span>
           <span>🌅 6 AM</span>
           <span>☀️ 12 PM</span>
+          <span>🌆 6 PM</span>
+        </div>
+
+        {/* Behavioral Color Legend */}
+        <div style={{ display: 'flex', gap: 12, marginTop: 10, pt: 8, borderTop: '1px solid #F1F5F9', fontSize: 10, color: '#64748B', fontWeight: 600, flexWrap: 'wrap' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#6366F1' }} /> Sleep/Rest
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#10B981' }} /> Rumination
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#0EA5E9' }} /> Walking
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: '#F59E0B' }} /> Active/Estrus
+          </span>
         </div>
       </div>
     </div>

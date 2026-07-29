@@ -3,6 +3,7 @@ import Header from './components/Header';
 import AlertBanner from './components/AlertBanner';
 import IcuMonitorStrip from './components/IcuMonitorStrip';
 import VitalsGrid from './components/VitalsGrid';
+import DailyStatsSection from './components/DailyStatsSection';
 import AnalyticsSection from './components/AnalyticsSection';
 import TimelineSection from './components/TimelineSection';
 import InteractiveControls from './components/InteractiveControls';
@@ -15,7 +16,7 @@ export default function App() {
   const [isSimulator, setIsSimulator] = useState(false);
   const [selectedCow, setSelectedCow] = useState('Lakshmi #104');
   const [errorMsg, setErrorMsg] = useState('');
-  const [timelineData, setTimelineData] = useState([]);
+  const [timelineData, setTimelineData] = useState(() => bleService.getStoredTimelineData());
   const [showLogs, setShowLogs] = useState(false);
 
   // Vitals state - default null when disconnected
@@ -35,7 +36,9 @@ export default function App() {
     });
 
     const unsubscribeTimeline = bleService.onTimelineData((data) => {
-      setTimelineData(data);
+      if (data && data.length > 0) {
+        setTimelineData(data);
+      }
     });
 
     return () => {
@@ -158,7 +161,10 @@ export default function App() {
             skinContact={vitals.contact !== false}
           />
 
-          {/* 4. 24-Hour Offline Morning Sync Timeline */}
+          {/* 4. Smartwatch 24-Hour Daily Statistics & AI Analysis */}
+          <DailyStatsSection timelineData={timelineData} />
+
+          {/* 5. 24-Hour Offline Morning Sync Timeline */}
           <TimelineSection timelineData={timelineData} />
 
           {/* 5. AI Insights & WhatsApp Export */}

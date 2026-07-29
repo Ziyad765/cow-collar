@@ -68,7 +68,22 @@ class BleService {
   }
 
   notifyTimelineListeners(data) {
+    if (data && Array.isArray(data) && data.length > 0) {
+      try {
+        const cappedData = data.slice(-288); // Keep max 288 records (24h-48h window) for memory efficiency
+        localStorage.setItem('cow_collar_timeline_data', JSON.stringify(cappedData));
+      } catch (e) {}
+    }
     this.timelineListeners.forEach(cb => cb(data));
+  }
+
+  getStoredTimelineData() {
+    try {
+      const stored = localStorage.getItem('cow_collar_timeline_data');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
   }
 
   async connectRealDevice() {
@@ -177,6 +192,21 @@ class BleService {
             this.addPacketLog('error', 'BLE Parse error', rawValue);
           }
         });
+
+        // Web BLE 24-Hour Log Sync
+        try {
+          const logChar = await service.getCharacteristic(LOG_CHAR_UUID);
+          await logChar.startNotifications();
+          logChar.addEventListener('characteristicvaluechanged', (event) => {
+            const decoder = new TextDecoder('utf-8');
+            const rawValue = decoder.decode(event.target.value);
+            try {
+              const logsArray = JSON.parse(rawValue);
+              this.addPacketLog('sync', `Web BLE 24h Log Sync: ${logsArray.length} records received`, rawValue);
+              this.notifyTimelineListeners(logsArray);
+            } catch (err) {}
+          });
+        } catch (webLogErr) {}
 
         this.isConnected = true;
         this.isSimulator = false;
