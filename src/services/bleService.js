@@ -1,5 +1,4 @@
 // Universal Native & Web BLE Service for Smart Cow Collar (iOS & Android Web PWA Compatible)
-import { BleClient } from '@capacitor-community/bluetooth-le';
 
 const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const VITALS_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
@@ -90,8 +89,9 @@ class BleService {
     this.stopSimulator();
     this.addPacketLog('info', 'Initiating BLE connection to CowCollar_EdgeAI...');
 
-    // 1. Native Capacitor BLE
+    // 1. Native Capacitor BLE (Safe Dynamic Import)
     try {
+      const { BleClient } = await import('@capacitor-community/bluetooth-le');
       await BleClient.initialize();
       this.isCapacitor = true;
 
