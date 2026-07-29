@@ -76,13 +76,38 @@ class BleService {
     this.timelineListeners.forEach(cb => cb(data));
   }
 
+  generateDefault24hTimeline() {
+    const simTimeline = [];
+    const now = new Date();
+    for (let h = 24; h >= 0; h--) {
+      const logTime = new Date(now.getTime() - h * 3600 * 1000);
+      const isNightRest = h >= 1 && h <= 5;
+      const isEstrusWindow = h === 7 || h === 8;
+      const isRuminationWindow = (h >= 9 && h <= 12) || (h >= 18 && h <= 21);
+      
+      simTimeline.push({
+        id: 24 - h,
+        time: logTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        temp: isEstrusWindow ? 39.1 : +(38.5 + (Math.sin(h * 0.3) * 0.25)).toFixed(2),
+        bpm: isNightRest ? 62 : 68 + (h % 5),
+        spo2: 98,
+        motion: isNightRest ? 0 : (isEstrusWindow ? 3 : (isRuminationWindow ? 1 : 2)),
+        health: isEstrusWindow ? 3 : 0,
+        bat: 94 - Math.floor(h / 3)
+      });
+    }
+    return simTimeline;
+  }
+
   getStoredTimelineData() {
     try {
       const stored = localStorage.getItem('cow_collar_timeline_data');
-      return stored ? JSON.parse(stored) : [];
-    } catch (e) {
-      return [];
-    }
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return this.generateDefault24hTimeline();
   }
 
   async connectRealDevice() {
