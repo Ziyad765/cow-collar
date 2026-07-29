@@ -17,12 +17,12 @@
 #include <Arduino.h>
 #include <SPIFFS.h>
 
-#define MAX_LOG_RECORDS 288 // 72 hours of data at 15-minute intervals
+#define MAX_LOG_RECORDS 5000 // High-Capacity Log Buffer (5,000 Records = 60 KB Flash Memory)
 #define LOG_FILE_PATH "/cow_vitals_log.bin"
 
 // Compact 12-Byte Binary Log Entry
 struct __attribute__((__packed__)) LogRecord {
-  uint32_t sampleId;     // Incremental sample index (0 to 288)
+  uint32_t sampleId;     // Incremental sample index (0 to 5000)
   uint16_t temp_x100;    // Temp * 100 (e.g., 3885 = 38.85 °C)
   uint8_t  bpm;          // Heart Rate BPM
   uint8_t  spo2;         // SpO2 Percentage
@@ -38,7 +38,7 @@ public:
     if (!SPIFFS.begin(true)) {
       Serial.println("[FlashLogger] SPIFFS Mount Failed!");
     } else {
-      Serial.println("[FlashLogger] SPIFFS Mounted Successfully.");
+      Serial.printf("[FlashLogger] SPIFFS Mounted Successfully. Total Space: %u bytes, Used: %u bytes.\n", SPIFFS.totalBytes(), SPIFFS.usedBytes());
     }
   }
 
@@ -74,7 +74,7 @@ public:
 
     SPIFFS.remove(LOG_FILE_PATH);
     SPIFFS.rename("/cow_vitals_tmp.bin", LOG_FILE_PATH);
-    Serial.printf("[FlashLogger] Ring buffer trimmed: kept latest %u records.\n", MAX_LOG_RECORDS);
+    Serial.printf("[FlashLogger] High-capacity ring buffer trimmed: kept latest %u records.\n", MAX_LOG_RECORDS);
   }
 
   // Append a new 12-byte reading record to offline flash memory (Persistent Rolling Ring Buffer)
@@ -115,22 +115,28 @@ public:
     return count;
   }
 
-  // Export all stored 24-hour / 72-hour records into JSON string for multi-phone BLE sync
-  static String exportLogsAsJson() {
+  // Export stored records into JSON string for multi-phone BLE sync (exports latest maxRecords)
+  static String exportLogsAsJson(size_t maxRecordsToExport = 500) {
     if (!SPIFFS.exists(LOG_FILE_PATH)) return "[]";
 
     File file = SPIFFS.open(LOG_FILE_PATH, FILE_READ);
     if (!file) return "[]";
 
-    size_t count = file.size() / sizeof(LogRecord);
-    if (count == 0) {
+    size_t totalCount = file.size() / sizeof(LogRecord);
+    if (totalCount == 0) {
       file.close();
       return "[]";
     }
 
+    size_t exportCount = (totalCount > maxRecordsToExport) ? maxRecordsToExport : totalCount;
+    size_t skipCount = totalCount - exportCount;
+    if (skipCount > 0) {
+      file.seek(skipCount * sizeof(LogRecord));
+    }
+
     // Reserve string buffer memory to prevent ESP32 RAM fragmentation
     String json = "";
-    json.reserve(count * 85 + 10);
+    json.reserve(exportCount * 80 + 10);
     json += "[";
     bool first = true;
 

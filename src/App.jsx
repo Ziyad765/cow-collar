@@ -136,6 +136,7 @@ export default function App() {
           selectedCow={selectedCow}
           onConnectReal={handleConnectReal}
           onToggleSimulator={handleToggleSimulator}
+          timelineData={timelineData}
         />
       ) : (
         <main style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>

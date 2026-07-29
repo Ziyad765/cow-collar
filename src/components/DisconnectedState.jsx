@@ -1,7 +1,7 @@
-import React from 'react';
-import { Bluetooth, Sparkles, Activity, ShieldCheck, Zap, Radio } from 'lucide-react';
+import DailyStatsSection from './DailyStatsSection';
+import TimelineSection from './TimelineSection';
 
-export default function DisconnectedState({ selectedCow, onConnectReal, onToggleSimulator }) {
+export default function DisconnectedState({ selectedCow, onConnectReal, onToggleSimulator, timelineData = [] }) {
   return (
     <div style={{ padding: '20px 16px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Primary Hero Disconnected Card */}
@@ -114,40 +114,51 @@ export default function DisconnectedState({ selectedCow, onConnectReal, onToggle
         </div>
       </div>
 
-      {/* Feature Preview Cards (What you get when connected) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div style={{
-          background: '#FFFFFF',
-          borderRadius: 18,
-          padding: '14px 16px',
-          border: '1px solid #E2E8F0',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6
-        }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
-            <Activity size={18} />
+      {/* Render Cached 1-Day Health Statistics Report when Offline */}
+      {timelineData && timelineData.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', px: 4 }}>
+            📋 Last Synced 1-Day Cow Health Report
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginTop: 4 }}>Real-Time Vitals</div>
-          <div style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>Live ECG, Heart Rate, SpO2 & Temperature</div>
+          <DailyStatsSection timelineData={timelineData} />
+          <TimelineSection timelineData={timelineData} />
         </div>
+      ) : (
+        /* Feature Preview Cards */
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 18,
+            padding: '14px 16px',
+            border: '1px solid #E2E8F0',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6
+          }}>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
+              <Activity size={18} />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginTop: 4 }}>Real-Time Vitals</div>
+            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>Live ECG, Heart Rate, SpO2 & Temperature</div>
+          </div>
 
-        <div style={{
-          background: '#FFFFFF',
-          borderRadius: 18,
-          padding: '14px 16px',
-          border: '1px solid #E2E8F0',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6
-        }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D97706' }}>
-            <Zap size={18} />
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 18,
+            padding: '14px 16px',
+            border: '1px solid #E2E8F0',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6
+          }}>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D97706' }}>
+              <Zap size={18} />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginTop: 4 }}>Estrus & Fever AI</div>
+            <div style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>48-hour early clinical alert notifications</div>
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginTop: 4 }}>Estrus & Fever AI</div>
-          <div style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>48-hour early clinical alert notifications</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

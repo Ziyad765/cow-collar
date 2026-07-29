@@ -286,11 +286,11 @@ void performFastVitalsReading(float &outTemp, int32_t &outBpm, int32_t &outSpo2,
   int healthStatus = 0;
   if (lastBodyTemp > 39.5) {
     healthStatus = 1; // Fever
-  } else if (lastBodyTemp < 38.0) {
-    healthStatus = 2; // Hypothermia
+  } else if (lastBodyTemp < 38.0 && lastBodyTemp > 32.0) {
+    healthStatus = 2; // Hypothermia (Only when attached to living host above 32°C)
   } else if (aiResult.predictedClass == 3) {
     healthStatus = 3; // Estrus Heat
-  } else if (lastBodyTemp < 38.3 && aiResult.predictedClass == 0 && features.varAccel > 2.0) {
+  } else if (lastBodyTemp >= 38.0 && lastBodyTemp < 38.3 && aiResult.predictedClass == 0 && features.varAccel > 2.0) {
     healthStatus = 4; // Calving Labor
   }
 
@@ -302,8 +302,20 @@ void performFastVitalsReading(float &outTemp, int32_t &outBpm, int32_t &outSpo2,
   outConfidence = (uint8_t)(aiResult.confidence * 100.0);
 }
 
+// --- 10-SAMPLE AGGREGATION & COOLDOWN RATE-LIMITER ---
+#define EVAL_WINDOW_SIZE 10                // Collect 10 readings (5 seconds) before forming conclusion
+#define OFFLINE_EVENT_COOLDOWN_MS 60000    // 60-Second Cooldown between heavy movement / estrus event logs
+#define OFFLINE_PERIODIC_INTERVAL_MS 60000 // 60-Second Periodic interval for rest baseline logs
+
+float tempEvalBuf[EVAL_WINDOW_SIZE];
+int bpmEvalBuf[EVAL_WINDOW_SIZE];
+int spo2EvalBuf[EVAL_WINDOW_SIZE];
+int motionEvalBuf[EVAL_WINDOW_SIZE];
+int healthEvalBuf[EVAL_WINDOW_SIZE];
+int evalIndex = 0;
+
 unsigned long lastOfflineLogTime = 0;
-#define OFFLINE_PERIODIC_INTERVAL_MS 5000 // 5 seconds in active test mode (or 5-15 mins in field mode)
+unsigned long lastEventLogTime = 0;
 
 void loop() {
   float bodyTemp;
@@ -315,20 +327,75 @@ void loop() {
   performFastVitalsReading(bodyTemp, bpm, spo2Val, motionClass, healthStatus, confidence, skinContact);
   uint8_t batteryPct = 94;
 
-  bool isHeavyMovementTrigger = (motionClass == 3 || healthStatus > 0); // Estrus heat / Fever spike / High motion
-  bool isPeriodicIntervalDue = (millis() - lastOfflineLogTime >= OFFLINE_PERIODIC_INTERVAL_MS);
-
-  // 1. OFFLINE FLASH LOGGING (Adaptive Dual-Trigger System)
+  // 1. OFFLINE FLASH LOGGING (10-Sample Aggregated Window & Cooldown Engine)
   if (!deviceConnected && skinContact) {
-    if (isHeavyMovementTrigger) {
-      FlashLogger::saveRecord(sampleCounter, bodyTemp, (uint8_t)bpm, (uint8_t)spo2Val, (uint8_t)motionClass, (uint8_t)healthStatus, batteryPct, confidence);
-      lastOfflineLogTime = millis();
-      Serial.printf("[OFFLINE MOTION TRIGGER] ⚡ Heavy movement / Heat detected! Instant record #%u logged.\n", sampleCounter);
-    } else if (isPeriodicIntervalDue) {
-      FlashLogger::saveRecord(sampleCounter, bodyTemp, (uint8_t)bpm, (uint8_t)spo2Val, (uint8_t)motionClass, (uint8_t)healthStatus, batteryPct, confidence);
-      lastOfflineLogTime = millis();
-      Serial.printf("[OFFLINE PERIODIC SAMPLING] 🌿 Rest/Rumination baseline sample #%u logged.\n", sampleCounter);
+    // Add current reading to 10-sample evaluation buffer
+    tempEvalBuf[evalIndex] = bodyTemp;
+    bpmEvalBuf[evalIndex] = (int)bpm;
+    spo2EvalBuf[evalIndex] = (int)spo2Val;
+    motionEvalBuf[evalIndex] = motionClass;
+    healthEvalBuf[evalIndex] = healthStatus;
+    evalIndex++;
+
+    // When 10 samples are collected (5-10 seconds of observation)
+    if (evalIndex >= EVAL_WINDOW_SIZE) {
+      evalIndex = 0; // Reset evaluation index
+
+      // Compute 10-sample averages
+      float tempSum = 0;
+      int bpmSum = 0, spo2Sum = 0;
+      int motionCounts[4] = {0, 0, 0, 0};
+      int estrusCount = 0;
+      int feverCount = 0;
+
+      for (int i = 0; i < EVAL_WINDOW_SIZE; i++) {
+        tempSum += tempEvalBuf[i];
+        bpmSum += bpmEvalBuf[i];
+        spo2Sum += spo2EvalBuf[i];
+        
+        int m = motionEvalBuf[i];
+        if (m >= 0 && m <= 3) motionCounts[m]++;
+        if (m == 3) estrusCount++;
+        if (healthEvalBuf[i] == 1 || tempEvalBuf[i] > 39.5) feverCount++;
+      }
+
+      float avgTemp = tempSum / EVAL_WINDOW_SIZE;
+      uint8_t avgBpm = (uint8_t)(bpmSum / EVAL_WINDOW_SIZE);
+      uint8_t avgSpo2 = (uint8_t)(spo2Sum / EVAL_WINDOW_SIZE);
+
+      // Determine dominant motion class
+      int dominantMotion = 0;
+      int maxCount = motionCounts[0];
+      for (int m = 1; m <= 3; m++) {
+        if (motionCounts[m] > maxCount) {
+          maxCount = motionCounts[m];
+          dominantMotion = m;
+        }
+      }
+
+      // Consensus Health Status
+      int consensusHealth = 0;
+      if (feverCount >= 4) consensusHealth = 1;       // High Fever
+      else if (estrusCount >= 3) consensusHealth = 3; // Estrus Heat
+
+      bool isHeavyMovementEvent = (dominantMotion == 3 || estrusCount >= 3 || feverCount >= 4);
+      bool isEventCooldownReady = (millis() - lastEventLogTime >= OFFLINE_EVENT_COOLDOWN_MS || lastEventLogTime == 0);
+      bool isPeriodicIntervalReady = (millis() - lastOfflineLogTime >= OFFLINE_PERIODIC_INTERVAL_MS || lastOfflineLogTime == 0);
+
+      if (isHeavyMovementEvent && isEventCooldownReady) {
+        FlashLogger::saveRecord(sampleCounter, avgTemp, avgBpm, avgSpo2, (uint8_t)dominantMotion, (uint8_t)consensusHealth, batteryPct, confidence);
+        lastEventLogTime = millis();
+        lastOfflineLogTime = millis();
+        Serial.printf("[OFFLINE EVENT LOGGED] ⚡ 10-Sample Consensus Estrus/Heavy Motion (#%u | Motion: %d | Temp: %.2f°C). Cooldown ACTIVE.\n", sampleCounter, dominantMotion, avgTemp);
+      } 
+      else if (isPeriodicIntervalReady) {
+        FlashLogger::saveRecord(sampleCounter, avgTemp, avgBpm, avgSpo2, (uint8_t)dominantMotion, (uint8_t)consensusHealth, batteryPct, confidence);
+        lastOfflineLogTime = millis();
+        Serial.printf("[OFFLINE PERIODIC LOGGED] 🌿 10-Sample Consensus Baseline (#%u | Motion: %d | Temp: %.2f°C).\n", sampleCounter, dominantMotion, avgTemp);
+      }
     }
+  } else {
+    evalIndex = 0; // Reset buffer when connected or no skin contact
   }
 
   char jsonBuffer[180];
