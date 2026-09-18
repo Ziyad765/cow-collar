@@ -1,9 +1,27 @@
-import React from 'react';
-import { Bluetooth, Sparkles, Activity, ShieldCheck, Zap, Radio } from 'lucide-react';
+import React, { useState } from 'react';
+import { Bluetooth, Sparkles, Activity, ShieldCheck, Zap, Radio, ExternalLink, Copy, Check } from 'lucide-react';
 import DailyStatsSection from './DailyStatsSection';
 import TimelineSection from './TimelineSection';
 
 export default function DisconnectedState({ selectedCow, onConnectReal, onToggleSimulator, timelineData = [] }) {
+  const [copied, setCopied] = useState(false);
+
+  const isIOS = typeof navigator !== 'undefined' && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+  const hasBluetooth = typeof navigator !== 'undefined' && Boolean(navigator.bluetooth);
+  const isBluefy = isIOS && hasBluetooth;
+  const isSafariIOS = isIOS && !hasBluetooth;
+
+  const handleCopyLink = () => {
+    if (typeof window !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
   return (
     <div style={{ padding: '20px 16px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Primary Hero Disconnected Card */}
@@ -54,7 +72,7 @@ export default function DisconnectedState({ selectedCow, onConnectReal, onToggle
           color: '#166534',
           fontWeight: 600,
           textAlign: 'left',
-          marginBottom: 18,
+          marginBottom: 14,
           display: 'flex',
           alignItems: 'center',
           gap: 8
@@ -64,6 +82,98 @@ export default function DisconnectedState({ selectedCow, onConnectReal, onToggle
             <strong>Collar is logging offline:</strong> Stores 24h vitals in Flash memory. Connect <em>any smartphone</em> at any time to sync 1-day cow statistics!
           </span>
         </div>
+
+        {/* iOS Safari Guidance Card */}
+        {isSafariIOS && (
+          <div style={{
+            width: '100%',
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            borderRadius: 16,
+            padding: '12px 14px',
+            textAlign: 'left',
+            marginBottom: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1D4ED8', fontWeight: 700, fontSize: 13 }}>
+              <span>📱</span>
+              <span>iPhone / iPad Safari Detected</span>
+            </div>
+            <div style={{ fontSize: 12, color: '#1E40AF', lineHeight: 1.45 }}>
+              Apple Safari does not allow Web Bluetooth. To connect wirelessly to your collar, open this dashboard inside <strong>Bluefy</strong>:
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+              <a
+                href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055"
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  flex: 1,
+                  padding: '9px 12px',
+                  background: '#2563EB',
+                  color: '#FFFFFF',
+                  borderRadius: 10,
+                  textAlign: 'center',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6
+                }}
+              >
+                <span>Get Bluefy App</span>
+                <ExternalLink size={13} />
+              </a>
+              <button
+                onClick={handleCopyLink}
+                style={{
+                  padding: '9px 12px',
+                  background: '#FFFFFF',
+                  color: '#1D4ED8',
+                  border: '1px solid #93C5FD',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5
+                }}
+              >
+                {copied ? <Check size={13} color="#16A34A" /> : <Copy size={13} />}
+                <span>{copied ? 'Copied!' : 'Copy URL'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Active Bluefy Browser Badge */}
+        {isBluefy && (
+          <div style={{
+            width: '100%',
+            background: '#F0FDF4',
+            border: '1px solid #86EFAC',
+            borderRadius: 14,
+            padding: '10px 14px',
+            textAlign: 'left',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 12,
+            color: '#15803D',
+            fontWeight: 600
+          }}>
+            <span style={{ fontSize: 15 }}>🟢</span>
+            <span>
+              <strong>Bluefy Web BLE Active:</strong> iOS CoreBluetooth bridge is ready! Tap below to scan and pair.
+            </span>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>

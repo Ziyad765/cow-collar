@@ -186,101 +186,122 @@ class BleService {
     this.realDeviceTimeline = []; // Reset real device timeline on new connection
     this.addPacketLog('info', 'Initiating BLE connection to CowCollar_EdgeAI...');
 
-    // 1. Native Capacitor BLE (Safe Dynamic Import)
-    try {
-      const { BleClient } = await import('@capacitor-community/bluetooth-le');
-      await BleClient.initialize();
-      this.isCapacitor = true;
+    // 1. Native Capacitor BLE (Only on real native iOS/Android shell, not browser/Bluefy)
+    const isNativeCapacitor = typeof window !== 'undefined' && 
+                              Boolean(window.Capacitor?.isNativePlatform?.());
 
-      const device = await BleClient.requestDevice({
-        services: [SERVICE_UUID],
-        name: 'CowCollar_EdgeAI'
-      });
-
-      this.deviceId = device.deviceId;
-      this.addPacketLog('success', `BLE Device Found: ${device.name || this.deviceId}`);
-
-      await BleClient.connect(this.deviceId, () => {
-        this.isConnected = false;
-        this.addPacketLog('warning', 'BLE Device Disconnected');
-        this.notifyListeners({ status: 'disconnected' });
-      });
-
-      this.addPacketLog('success', 'GATT Connection Established');
-
-      // Subscribe to Live Vitals
-      await BleClient.startNotifications(
-        this.deviceId,
-        SERVICE_UUID,
-        VITALS_CHAR_UUID,
-        (value) => {
-          const decoder = new TextDecoder('utf-8');
-          const rawValue = decoder.decode(value);
-          try {
-            const parsed = JSON.parse(rawValue);
-            this.addPacketLog('stream', `LIVE RX: ${parsed.temp}°C | ${parsed.bpm} BPM | ${parsed.spo2}% SpO2`, rawValue);
-            this.notifyListeners({ status: 'live', data: parsed });
-            this.processIncomingRealVitals(parsed);
-          } catch (err) {
-            this.addPacketLog('error', 'BLE Packet parse error', rawValue);
-          }
-        }
-      );
-
-      // Subscribe to 24h Offline Logs
+    if (isNativeCapacitor) {
       try {
+        const { BleClient } = await import('@capacitor-community/bluetooth-le');
+        await BleClient.initialize();
+        this.isCapacitor = true;
+
+        const device = await BleClient.requestDevice({
+          services: [SERVICE_UUID],
+          name: 'CowCollar_EdgeAI'
+        });
+
+        this.deviceId = device.deviceId;
+        this.addPacketLog('success', `BLE Device Found: ${device.name || this.deviceId}`);
+
+        await BleClient.connect(this.deviceId, () => {
+          this.isConnected = false;
+          this.addPacketLog('warning', 'BLE Device Disconnected');
+          this.notifyListeners({ status: 'disconnected' });
+        });
+
+        this.addPacketLog('success', 'GATT Connection Established');
+
+        // Subscribe to Live Vitals
         await BleClient.startNotifications(
           this.deviceId,
           SERVICE_UUID,
-          LOG_CHAR_UUID,
+          VITALS_CHAR_UUID,
           (value) => {
             const decoder = new TextDecoder('utf-8');
             const rawValue = decoder.decode(value);
             try {
-              const logsArray = JSON.parse(rawValue);
-              this.addPacketLog('sync', `24h Flash Log Sync: ${logsArray.length} records received`, rawValue);
-              this.setRealFlashLogs(logsArray);
+              const parsed = JSON.parse(rawValue);
+              this.addPacketLog('stream', `LIVE RX: ${parsed.temp}°C | ${parsed.bpm} BPM | ${parsed.spo2}% SpO2`, rawValue);
+              this.notifyListeners({ status: 'live', data: parsed });
+              this.processIncomingRealVitals(parsed);
             } catch (err) {
-              console.error('Timeline parse error:', rawValue);
+              this.addPacketLog('error', 'BLE Packet parse error', rawValue);
             }
           }
         );
 
-        // Direct GATT read for instant 1-Day log sync
+        // Subscribe to 24h Offline Logs
         try {
-          const logVal = await BleClient.read(this.deviceId, SERVICE_UUID, LOG_CHAR_UUID);
-          const decoder = new TextDecoder('utf-8');
-          const rawValue = decoder.decode(logVal.value || logVal);
-          if (rawValue && rawValue.startsWith('[')) {
-            const logsArray = JSON.parse(rawValue);
-            if (Array.isArray(logsArray) && logsArray.length > 0) {
-              this.addPacketLog('sync', `Direct Read Sync: ${logsArray.length} records received`, rawValue);
-              this.setRealFlashLogs(logsArray);
+          await BleClient.startNotifications(
+            this.deviceId,
+            SERVICE_UUID,
+            LOG_CHAR_UUID,
+            (value) => {
+              const decoder = new TextDecoder('utf-8');
+              const rawValue = decoder.decode(value);
+              try {
+                const logsArray = JSON.parse(rawValue);
+                this.addPacketLog('sync', `24h Flash Log Sync: ${logsArray.length} records received`, rawValue);
+                this.setRealFlashLogs(logsArray);
+              } catch (err) {
+                console.error('Timeline parse error:', rawValue);
+              }
             }
-          }
-        } catch (readErr) {}
-      } catch (logErr) {}
+          );
 
-      this.isConnected = true;
-      this.isSimulator = false;
-      return true;
+          // Direct GATT read for instant 1-Day log sync
+          try {
+            const logVal = await BleClient.read(this.deviceId, SERVICE_UUID, LOG_CHAR_UUID);
+            const decoder = new TextDecoder('utf-8');
+            const rawValue = decoder.decode(logVal.value || logVal);
+            if (rawValue && rawValue.startsWith('[')) {
+              const logsArray = JSON.parse(rawValue);
+              if (Array.isArray(logsArray) && logsArray.length > 0) {
+                this.addPacketLog('sync', `Direct Read Sync: ${logsArray.length} records received`, rawValue);
+                this.setRealFlashLogs(logsArray);
+              }
+            }
+          } catch (readErr) {}
+        } catch (logErr) {}
 
-    } catch (nativeErr) {
-      console.warn('Native BLE unavailable, switching to Universal Web Bluetooth PWA mode...', nativeErr);
+        this.isConnected = true;
+        this.isSimulator = false;
+        return true;
+
+      } catch (nativeErr) {
+        console.warn('Native BLE failed, falling back to Web Bluetooth...', nativeErr);
+      }
     }
 
-    // 2. Universal Web Bluetooth Fallback
-    if (navigator.bluetooth) {
+    // 2. Universal Web Bluetooth (Works in Chrome, Edge, and Bluefy / WebBLE on iOS)
+    if (typeof navigator !== 'undefined' && navigator.bluetooth) {
       try {
-        this.device = await navigator.bluetooth.requestDevice({
-          filters: [
-            { name: 'CowCollar_EdgeAI' },
-            { namePrefix: 'CowCollar' }
-          ],
-          optionalServices: [SERVICE_UUID]
-        });
+        this.addPacketLog('info', 'Scanning for Cow Collar via Web Bluetooth (Bluefy / Chrome)...');
+        
+        // In iOS CoreBluetooth / Bluefy, service UUID filter is required for background/scan matching
+        try {
+          this.device = await navigator.bluetooth.requestDevice({
+            filters: [
+              { services: [SERVICE_UUID] },
+              { name: 'CowCollar_EdgeAI' },
+              { namePrefix: 'CowCollar' }
+            ],
+            optionalServices: [SERVICE_UUID]
+          });
+        } catch (filterErr) {
+          // If user didn't cancel and filter was too restrictive, try acceptAllDevices fallback
+          if (filterErr.name === 'NotFoundError' && filterErr.message && filterErr.message.toLowerCase().includes('user cancelled')) {
+            throw filterErr;
+          }
+          this.addPacketLog('warning', 'Filtered scan failed or empty, opening device chooser fallback...');
+          this.device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [SERVICE_UUID]
+          });
+        }
 
-        this.addPacketLog('success', `Web BLE Device Found: ${this.device.name}`);
+        this.addPacketLog('success', `Web BLE Device Selected: ${this.device.name || 'CowCollar'}`);
 
         this.device.addEventListener('gattserverdisconnected', () => {
           this.isConnected = false;
@@ -288,38 +309,76 @@ class BleService {
           this.notifyListeners({ status: 'disconnected' });
         });
 
+        // Connect with pacing delay for iOS CoreBluetooth stability
         const server = await this.device.gatt.connect();
+        this.addPacketLog('info', 'Connected to GATT Server, resolving services...');
+        await new Promise(r => setTimeout(r, 250));
+
         const service = await server.getPrimaryService(SERVICE_UUID);
+        await new Promise(r => setTimeout(r, 200));
 
         const vitalsChar = await service.getCharacteristic(VITALS_CHAR_UUID);
         await vitalsChar.startNotifications();
+        this.addPacketLog('success', 'Subscribed to Live Vitals stream');
+
+        // Streaming buffer for reassembling split BLE MTU fragments
+        let rxBuffer = '';
         vitalsChar.addEventListener('characteristicvaluechanged', (event) => {
           const decoder = new TextDecoder('utf-8');
-          const rawValue = decoder.decode(event.target.value);
-          try {
-            const parsed = JSON.parse(rawValue);
-            this.addPacketLog('stream', `LIVE RX: ${parsed.temp}°C | ${parsed.bpm} BPM | ${parsed.spo2}% SpO2`, rawValue);
-            this.notifyListeners({ status: 'live', data: parsed });
-            this.processIncomingRealVitals(parsed);
-          } catch (err) {
-            this.addPacketLog('error', 'BLE Parse error', rawValue);
+          const chunk = decoder.decode(event.target.value);
+          rxBuffer += chunk;
+
+          // Attempt to parse complete JSON objects { ... }
+          const startIdx = rxBuffer.indexOf('{');
+          const endIdx = rxBuffer.lastIndexOf('}');
+
+          if (startIdx !== -1 && endIdx > startIdx) {
+            const candidate = rxBuffer.substring(startIdx, endIdx + 1);
+            try {
+              const parsed = JSON.parse(candidate);
+              rxBuffer = rxBuffer.substring(endIdx + 1); // keep remainder
+              this.addPacketLog('stream', `LIVE RX: ${parsed.temp}°C | ${parsed.bpm} BPM | ${parsed.spo2}% SpO2`, candidate);
+              this.notifyListeners({ status: 'live', data: parsed });
+              this.processIncomingRealVitals(parsed);
+            } catch (err) {
+              if (rxBuffer.length > 512) rxBuffer = '';
+            }
+          } else if (rxBuffer.length > 512) {
+            rxBuffer = '';
           }
         });
 
-        // Web BLE 24-Hour Log Sync
+        // Subscribe to Offline Flash Logs if available (with delay to avoid iOS GATT collision)
+        await new Promise(r => setTimeout(r, 250));
         try {
           const logChar = await service.getCharacteristic(LOG_CHAR_UUID);
           await logChar.startNotifications();
+          let logRxBuffer = '';
           logChar.addEventListener('characteristicvaluechanged', (event) => {
             const decoder = new TextDecoder('utf-8');
-            const rawValue = decoder.decode(event.target.value);
-            try {
-              const logsArray = JSON.parse(rawValue);
-              this.addPacketLog('sync', `Web BLE 24h Log Sync: ${logsArray.length} records received`, rawValue);
-              this.setRealFlashLogs(logsArray);
-            } catch (err) {}
+            const chunk = decoder.decode(event.target.value);
+            logRxBuffer += chunk;
+
+            const startIdx = logRxBuffer.indexOf('[');
+            const endIdx = logRxBuffer.lastIndexOf(']');
+
+            if (startIdx !== -1 && endIdx > startIdx) {
+              const candidate = logRxBuffer.substring(startIdx, endIdx + 1);
+              try {
+                const logsArray = JSON.parse(candidate);
+                logRxBuffer = logRxBuffer.substring(endIdx + 1);
+                this.addPacketLog('sync', `Web BLE 24h Log Sync: ${logsArray.length} records received`, candidate);
+                this.setRealFlashLogs(logsArray);
+              } catch (err) {
+                if (logRxBuffer.length > 4096) logRxBuffer = '';
+              }
+            } else if (logRxBuffer.length > 4096) {
+              logRxBuffer = '';
+            }
           });
-        } catch (webLogErr) {}
+        } catch (webLogErr) {
+          console.warn('Optional offline log sync not active:', webLogErr);
+        }
 
         this.isConnected = true;
         this.isSimulator = false;
@@ -330,7 +389,7 @@ class BleService {
       }
     }
 
-    throw new Error('Web Bluetooth is not supported in this browser. Please use Chrome/Edge on Android, or the Bluefy app on iPhone!');
+    throw new Error('Web Bluetooth is not supported in this browser. On iPhone/iPad, please open this website in the free "Bluefy" app from the App Store. On Android/PC/Mac, use Chrome or Edge.');
   }
 
   startSimulator() {

@@ -164,6 +164,7 @@ void setup() {
 
   // 6. Initialize BLE GATT Server
   BLEDevice::init("CowCollar_EdgeAI");
+  BLEDevice::setMTU(517); // Set MTU up to 517 bytes for iOS Bluefy / Android full JSON transmission
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
