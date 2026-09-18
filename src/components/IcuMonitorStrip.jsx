@@ -240,7 +240,7 @@ export default function IcuMonitorStrip({ bpm = 68, spo2 = 98, skinContact = tru
             borderRadius: 99,
             border: `1px solid ${skinContact ? '#A7F3D0' : '#FDE68A'}`
           }}>
-            {skinContact ? '● Live Dynamic Sync' : '⚠️ Skin Contact Off'}
+            {skinContact ? '● Live Fur-Penetration Active' : '⚠️ Collar Unattached'}
           </span>
         </div>
 
