@@ -91,7 +91,13 @@ class BleService {
       motion: Number(parsed.motion) ?? 0,
       health: Number(parsed.health) ?? 0,
       bat: Number(parsed.bat) || 100,
-      conf: Number(parsed.conf) || 95
+      conf: Number(parsed.conf) || 95,
+      hrv: Number(parsed.hrv) || 0,
+      rr: Number(parsed.rr) || 0,
+      lying: parsed.lying === true || parsed.lying === 'true',
+      lyingMin: Number(parsed.lyingMin) || 0,
+      score: Number(parsed.score) || 0,
+      trend: Number(parsed.trend) || 0
     };
 
     if (!this.realDeviceTimeline || this.realDeviceTimeline.length === 0) {
@@ -119,7 +125,13 @@ class BleService {
         spo2: newRecord.spo2,
         motion: newRecord.motion,
         health: newRecord.health,
-        bat: newRecord.bat
+        bat: newRecord.bat,
+        hrv: newRecord.hrv,
+        rr: newRecord.rr,
+        lying: newRecord.lying,
+        lyingMin: newRecord.lyingMin,
+        score: newRecord.score,
+        trend: newRecord.trend
       };
       if (!this.isFlashLogsSynced) {
         this.notifyTimelineListeners(this.realDeviceTimeline);
@@ -453,7 +465,13 @@ class BleService {
         health: simHealth,
         bat: simBat,
         conf: 96.4,
-        contact: true
+        contact: true,
+        hrv: Math.floor(35 + Math.sin(tickCount * 0.1) * 15 + Math.random() * 5),
+        rr: Math.floor(18 + Math.sin(tickCount * 0.08) * 4 + Math.random() * 2),
+        lying: tickCount % 80 > 60,
+        lyingMin: Math.floor((tickCount % 60) / 2),
+        score: Math.min(100, Math.max(65, Math.floor(88 + Math.sin(tickCount * 0.05) * 8 + Math.random() * 3))),
+        trend: tickCount % 120 > 100 ? 1 : 0
       };
 
       const rawJson = JSON.stringify(payloadData);

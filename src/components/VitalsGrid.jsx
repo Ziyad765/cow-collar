@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Thermometer, Heart, Wind, Activity } from 'lucide-react';
+import { Thermometer, Heart, Wind, Activity, ChevronRight } from 'lucide-react';
+import HealthScoreCard from './HealthScoreCard';
 
 function AnimatedNumber({ value, decimals = 0 }) {
   const [display, setDisplay] = useState(value);
@@ -20,165 +21,383 @@ function AnimatedNumber({ value, decimals = 0 }) {
   return <>{decimals > 0 ? display.toFixed(decimals) : Math.round(display)}</>;
 }
 
-const MOTION_MAP = {
-  0: { label: 'Resting', color: '#10B981', bg: '#ECFDF5', border: '#A7F3D0', emoji: '💤' },
-  1: { label: 'Ruminating', color: '#06B6D4', bg: '#CFFAFE', border: '#A5F3FC', emoji: '🐄' },
-  2: { label: 'Walking', color: '#8B5CF6', bg: '#F3E8FF', border: '#DDD6FE', emoji: '🚶' },
-  3: { label: 'Restless', color: '#F59E0B', bg: '#FEF3C7', border: '#FDE68A', emoji: '⚡' },
-};
+export default function VitalsGrid({
+  temp = 38.1,
+  bpm = 68,
+  spo2 = 98,
+  motionState = 1,
+  skinContact = true,
+  hrv = 58,
+  rr = 32,
+  isLying = false,
+  lyingMin = 18,
+  healthScore = 94,
+  trend = 0,
+  ruminationHours = 6.2
+}) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-export default function VitalsGrid({ temp = 38.8, bpm = 68, spo2 = 98, motionState = 1, skinContact = true }) {
-  const motion = MOTION_MAP[motionState] || MOTION_MAP[0];
-  const tempPct = Math.min(100, Math.max(0, ((temp - 37.0) / 4.0) * 100));
+  // Status evaluations
+  const isFever = temp > 39.5;
+  const isHypothermia = temp < 37.8 && temp > 0;
+  const tempStatus = isFever 
+    ? { label: 'High Fever', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' }
+    : isHypothermia
+    ? { label: 'Low Temp', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' }
+    : { label: 'Normal', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' };
+
+  const isTachy = bpm > 85;
+  const bpmStatus = isTachy
+    ? { label: 'Elevated', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' }
+    : { label: 'Normal', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' };
+
+  const isRespDistress = rr > 40;
+  const respStatus = isRespDistress
+    ? { label: 'Distress', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' }
+    : { label: 'Normal', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' };
+
+  const isLowRumination = ruminationHours < 4.5;
+  const ruminationStatus = isLowRumination
+    ? { label: 'Reduced', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' }
+    : { label: 'Good', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' };
 
   return (
     <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* 2-Column Primary Vitals Row */}
+      {/* 2x2 Grid of Primary Vitals (Matching Screenshot 1 & 2) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {/* Temperature Card */}
+        
+        {/* 1. Temperature Card */}
         <div style={{
           background: '#FFFFFF',
-          borderRadius: 20,
-          padding: '16px',
-          border: '1px solid #E2E8F0',
-          boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05)'
+          borderRadius: 22,
+          padding: '16px 14px',
+          border: '1px solid #E6F0EA',
+          boxShadow: '0 4px 15px -2px rgba(15, 23, 42, 0.04)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: 124
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EF4444' }}>
-              <Thermometer size={18} />
-            </div>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-              Body Temp
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 8 }}>
-            <span style={{ fontSize: 32, fontWeight: 800, color: temp > 39.5 ? '#EF4444' : temp < 38.0 ? '#3B82F6' : '#0F172A', fontFamily: 'monospace' }}>
-              <AnimatedNumber value={temp} decimals={1} />
-            </span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#64748B' }}>°C</span>
-          </div>
-
-          {/* Temperature Range Bar */}
-          <div style={{ width: '100%', height: 5, background: '#F1F5F9', borderRadius: 99, overflow: 'hidden', marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
             <div style={{
-              width: `${tempPct}%`,
-              height: '100%',
-              background: temp > 39.5 ? '#EF4444' : '#10B981',
-              borderRadius: 99,
-              transition: 'width 0.5s ease'
-            }} />
-          </div>
-
-          <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 500 }}>Normal: 38.5 – 39.5°C</div>
-        </div>
-
-        {/* Heart Rate / Pulse Card */}
-        <div style={{
-          background: '#FFFFFF',
-          borderRadius: 20,
-          padding: '16px',
-          border: '1px solid #E2E8F0',
-          boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
-              <Heart size={18} />
-            </div>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-              Pulse Rate
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 8 }}>
-            <span style={{ fontSize: 32, fontWeight: 800, color: skinContact ? '#0F172A' : '#94A3B8', fontFamily: 'monospace' }}>
-              {skinContact ? <AnimatedNumber value={bpm} /> : '--'}
-            </span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#64748B' }}>BPM</span>
-          </div>
-
-          <div style={{ width: '100%', height: 5, background: '#F1F5F9', borderRadius: 99, overflow: 'hidden', marginBottom: 6 }}>
-            <div style={{
-              width: skinContact ? `${Math.min(100, (bpm / 120) * 100)}%` : '0%',
-              height: '100%',
-              background: '#10B981',
-              borderRadius: 99,
-              transition: 'width 0.5s ease'
-            }} />
-          </div>
-
-          <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 500 }}>Normal: 60 – 80 BPM</div>
-        </div>
-      </div>
-
-      {/* Edge AI Posture State Card */}
-      <div style={{
-        background: '#FFFFFF',
-        borderRadius: 20,
-        padding: '16px',
-        border: '1px solid #E2E8F0',
-        boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 40,
-              height: 40,
+              width: 36,
+              height: 36,
               borderRadius: 12,
-              background: motion.bg,
-              border: `1px solid ${motion.border}`,
+              background: isFever ? '#FEE2E2' : '#E8F5E9',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 20
+              color: isFever ? '#DC2626' : '#2E7D32',
+              flexShrink: 0
             }}>
-              {skinContact ? motion.emoji : '❓'}
+              <Thermometer size={20} strokeWidth={2.3} />
             </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                Edge AI Posture Classifier
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: skinContact ? motion.color : '#94A3B8', letterSpacing: '-0.01em' }}>
-                {skinContact ? motion.label : 'Sensor Unattached'}
-              </div>
-            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>
+              Temperature
+            </span>
           </div>
 
-          <span style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: '#059669',
-            background: '#ECFDF5',
-            padding: '4px 9px',
-            borderRadius: 99,
-            border: '1px solid #A7F3D0'
-          }}>
-            50Hz Accelerometer
-          </span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
+            <span style={{
+              fontSize: 28,
+              fontWeight: 800,
+              color: tempStatus.color,
+              fontFamily: 'monospace',
+              letterSpacing: '-0.02em',
+              lineHeight: 1
+            }}>
+              <AnimatedNumber value={temp} decimals={1} />°C
+            </span>
+            {isFever && <span style={{ fontSize: 16, color: '#DC2626', fontWeight: 800 }}>⬆️</span>}
+          </div>
+
+          <div>
+            <span style={{
+              display: 'inline-block',
+              fontSize: 11,
+              fontWeight: 700,
+              color: tempStatus.color,
+              background: tempStatus.bg,
+              border: `1px solid ${tempStatus.border}`,
+              padding: '2px 8px',
+              borderRadius: 20
+            }}>
+              {tempStatus.label}
+            </span>
+          </div>
         </div>
 
-        {/* State Indicators */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-          {Object.entries(MOTION_MAP).map(([key, m]) => {
-            const isActive = skinContact && parseInt(key) === motionState;
-            return (
-              <div key={key} style={{
-                padding: '8px 4px',
-                borderRadius: 10,
-                textAlign: 'center',
-                background: isActive ? m.bg : '#F8FAFC',
-                border: `1px solid ${isActive ? m.border : '#E2E8F0'}`,
-                fontSize: 11,
-                fontWeight: 700,
-                color: isActive ? m.color : '#94A3B8',
-                transition: 'all 0.2s ease'
-              }}>
-                {m.emoji} {m.label}
-              </div>
-            );
-          })}
+        {/* 2. Heart Rate Card */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: 22,
+          padding: '16px 14px',
+          border: '1px solid #E6F0EA',
+          boxShadow: '0 4px 15px -2px rgba(15, 23, 42, 0.04)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: 124
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: 12,
+              background: '#FEE2E2',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#DC2626',
+              flexShrink: 0
+            }}>
+              <Heart size={20} strokeWidth={2.3} fill="#DC2626" />
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>
+              Heart Rate
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
+            <span style={{
+              fontSize: 28,
+              fontWeight: 800,
+              color: '#0F172A',
+              fontFamily: 'monospace',
+              letterSpacing: '-0.02em',
+              lineHeight: 1
+            }}>
+              {skinContact ? <AnimatedNumber value={bpm} /> : '--'}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#64748B' }}>
+              BPM
+            </span>
+          </div>
+
+          <div>
+            <span style={{
+              display: 'inline-block',
+              fontSize: 11,
+              fontWeight: 700,
+              color: bpmStatus.color,
+              background: bpmStatus.bg,
+              border: `1px solid ${bpmStatus.border}`,
+              padding: '2px 8px',
+              borderRadius: 20
+            }}>
+              {bpmStatus.label}
+            </span>
+          </div>
+        </div>
+
+        {/* 3. Respiration Rate Card */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: 22,
+          padding: '16px 14px',
+          border: '1px solid #E6F0EA',
+          boxShadow: '0 4px 15px -2px rgba(15, 23, 42, 0.04)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: 124
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: 12,
+              background: '#E0F2FE',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#0284C7',
+              flexShrink: 0
+            }}>
+              <Wind size={20} strokeWidth={2.3} />
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>
+              Respiration
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
+            <span style={{
+              fontSize: 28,
+              fontWeight: 800,
+              color: respStatus.color,
+              fontFamily: 'monospace',
+              letterSpacing: '-0.02em',
+              lineHeight: 1
+            }}>
+              {rr > 0 ? rr : 32}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#64748B' }}>
+              /min
+            </span>
+          </div>
+
+          <div>
+            <span style={{
+              display: 'inline-block',
+              fontSize: 11,
+              fontWeight: 700,
+              color: respStatus.color,
+              background: respStatus.bg,
+              border: `1px solid ${respStatus.border}`,
+              padding: '2px 8px',
+              borderRadius: 20
+            }}>
+              {respStatus.label}
+            </span>
+          </div>
+        </div>
+
+        {/* 4. Rumination Hours Card */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: 22,
+          padding: '16px 14px',
+          border: '1px solid #E6F0EA',
+          boxShadow: '0 4px 15px -2px rgba(15, 23, 42, 0.04)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: 124
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: 12,
+              background: '#ECFDF5',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#059669',
+              flexShrink: 0
+            }}>
+              <span style={{ fontSize: 18 }}>🌱</span>
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>
+              Rumination
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
+            <span style={{
+              fontSize: 28,
+              fontWeight: 800,
+              color: '#0F172A',
+              fontFamily: 'monospace',
+              letterSpacing: '-0.02em',
+              lineHeight: 1
+            }}>
+              {ruminationHours.toFixed(1)}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#64748B' }}>
+              hrs
+            </span>
+          </div>
+
+          <div>
+            <span style={{
+              display: 'inline-block',
+              fontSize: 11,
+              fontWeight: 700,
+              color: ruminationStatus.color,
+              background: ruminationStatus.bg,
+              border: `1px solid ${ruminationStatus.border}`,
+              padding: '2px 8px',
+              borderRadius: 20
+            }}>
+              {ruminationStatus.label}
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      {/* 5. Full-Width Posture & Resting Card (Matching Screenshot 1) */}
+      <div style={{
+        background: '#FFFFFF',
+        borderRadius: 22,
+        padding: '16px 18px',
+        border: '1px solid #E6F0EA',
+        boxShadow: '0 4px 15px -2px rgba(15, 23, 42, 0.04)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {/* Standing / Lying Cow Graphic Silhouette */}
+          <div style={{
+            width: 52,
+            height: 52,
+            borderRadius: 16,
+            background: isLying ? '#F3E8FF' : '#E8F5E9',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 26
+          }}>
+            {isLying ? '🛌' : '🐄'}
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+              Posture
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#0F172A', lineHeight: 1.2 }}>
+              {isLying ? 'Lying Down' : 'Standing'}
+            </div>
+            <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+              {isLying ? `${lyingMin} min resting this hour` : 'Active grazing & movement'}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <span style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: isLying ? '#7C3AED' : '#059669',
+            background: isLying ? '#F5F3FF' : '#ECFDF5',
+            border: `1px solid ${isLying ? '#DDD6FE' : '#A7F3D0'}`,
+            padding: '6px 14px',
+            borderRadius: 20
+          }}>
+            {isLying ? 'Resting' : 'Active'}
+          </span>
         </div>
       </div>
+
+      {/* Toggle Button for ICU Waveforms & Advanced Diagnostics */}
+      <div style={{ textAlign: 'center', marginTop: 4 }}>
+        <button
+          onClick={() => setShowAdvanced(v => !v)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#059669',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4
+          }}
+        >
+          {showAdvanced ? 'Hide Advanced ICU Telemetry ▲' : 'View Composite Health Score & Advanced Metrics ▼'}
+        </button>
+      </div>
+
+      {/* Advanced Telemetry Drawer (Health Score, SpO2, HRV) */}
+      {showAdvanced && (
+        <div style={{ animation: 'fadeUp 0.25s ease forwards' }}>
+          <HealthScoreCard score={healthScore} trend={trend} skinContact={skinContact} />
+        </div>
+      )}
     </div>
   );
 }
