@@ -85,7 +85,7 @@ export default function CowConnectionCard({
               </span>
               <span style={{ fontSize: 10, color: '#94A3B8' }}>•</span>
               <span style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>
-                {batteryPct}% Bat
+                {isConnected ? `${batteryPct}% Bat` : 'Offline'}
               </span>
             </div>
 

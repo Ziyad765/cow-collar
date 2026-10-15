@@ -3,20 +3,22 @@ import { MessageCircle, Share2, Sparkles, Clock, TrendingUp, Stethoscope, CheckC
 
 export default function AnalyticsSection({
   selectedCow = 'Cow #245',
-  temp = 38.1,
-  bpm = 68,
-  rr = 32,
-  ruminationHours = 6.2,
+  temp = null,
+  bpm = null,
+  rr = null,
+  ruminationHours = null,
   isLying = false,
-  healthStatus = 0
+  healthStatus = 0,
+  isConnected = false
 }) {
-  const isFever = healthStatus === 1 || temp > 39.5;
-  const isEstrus = healthStatus === 3;
-  const isCalving = healthStatus === 4;
-  const isMilkFever = healthStatus === 7;
-  const isResp = healthStatus === 5;
+  const isFever = isConnected && (healthStatus === 1 || (temp !== null && temp > 39.5));
+  const isEstrus = isConnected && healthStatus === 3;
+  const isCalving = isConnected && healthStatus === 4;
+  const isMilkFever = isConnected && healthStatus === 7;
+  const isResp = isConnected && (healthStatus === 5 || (rr !== null && rr > 40));
 
   const getOverallStatus = () => {
+    if (!isConnected) return '○ Collar Disconnected · Awaiting live signal';
     if (isFever) return '⚠️ Fever Risk - Early Subclinical Mastitis pattern detected.';
     if (isEstrus) return '🔥 Estrus Peak - 12-Hour Artificial Insemination window active.';
     if (isCalving) return '🍼 Calving Imminent - Temp drop 0.6°C detected (12-24h delivery window).';
@@ -24,6 +26,12 @@ export default function AnalyticsSection({
     if (isResp) return '🫁 Respiratory Distress - Elevated breathing rate (>40/min).';
     return '✅ Normal - All biological vitals within healthy baseline ranges.';
   };
+
+  const tempStr = isConnected && temp !== null ? `${temp}°C` : '--';
+  const bpmStr = isConnected && bpm !== null ? `${bpm} BPM` : '--';
+  const rrStr = isConnected && rr !== null ? `${rr} /min` : '--';
+  const rumStr = isConnected && ruminationHours !== null ? `${ruminationHours.toFixed(1)} hrs` : '--';
+  const postureStr = isConnected ? (isLying ? 'Lying Down (Resting)' : 'Standing (Active)') : '--';
 
   const handleWhatsApp = () => {
     const now = new Date();
@@ -35,11 +43,11 @@ export default function AnalyticsSection({
       `*Health Report — ${selectedCow}*\n\n` +
       `📌 *Cow ID:* 245 (HF Cross)\n` +
       `🕒 *Date:* ${dateStr}\n\n` +
-      `🌡️ *Temperature:* ${temp}°C (${isFever ? 'High Fever Alert!' : 'Normal'})\n` +
-      `💓 *Heart Rate:* ${bpm} BPM (Normal)\n` +
-      `🫁 *Respiration:* ${rr} /min (${isResp ? 'Elevated Distress' : 'Normal'})\n` +
-      `🌱 *Rumination:* ${ruminationHours.toFixed(1)} hrs (Good)\n` +
-      `🐄 *Posture:* ${isLying ? 'Lying Down (Resting)' : 'Standing (Active)'}\n\n` +
+      `🌡️ *Temperature:* ${tempStr} (${isFever ? 'High Fever Alert!' : isConnected ? 'Normal' : 'Disconnected'})\n` +
+      `💓 *Heart Rate:* ${bpmStr}\n` +
+      `🫁 *Respiration:* ${rrStr} (${isResp ? 'Elevated Distress' : isConnected ? 'Normal' : 'Disconnected'})\n` +
+      `🌱 *Rumination:* ${rumStr}\n` +
+      `🐄 *Posture:* ${postureStr}\n\n` +
       `📋 *Overall Diagnosis:*\n` +
       `${getOverallStatus()}\n\n` +
       `_Report generated via CowCollar AI Edge Intelligence System_`;
@@ -100,12 +108,12 @@ export default function AnalyticsSection({
         }}>
           <div><strong>CowCollar AI Health Report — {selectedCow}</strong></div>
           <div style={{ color: '#4B5563', fontSize: 10, margin: '2px 0 6px' }}>Date: Today, Just now</div>
-          <div>🌡️ Temperature: {temp}°C {isFever ? '(High Alert)' : '(Normal)'}</div>
-          <div>💓 Heart Rate: {bpm} BPM (Normal)</div>
-          <div>🫁 Respiration: {rr} /min (Normal)</div>
-          <div>🌱 Rumination: {ruminationHours.toFixed(1)} hrs (Good)</div>
-          <div>🐄 Posture: {isLying ? 'Lying Down' : 'Standing (Active)'}</div>
-          <div style={{ marginTop: 6, fontWeight: 700, color: isFever ? '#B91C1C' : '#15803D' }}>
+          <div>🌡️ Temperature: {tempStr} {isFever ? '(High Alert)' : isConnected ? '(Normal)' : ''}</div>
+          <div>💓 Heart Rate: {bpmStr}</div>
+          <div>🫁 Respiration: {rrStr}</div>
+          <div>🌱 Rumination: {rumStr}</div>
+          <div>🐄 Posture: {postureStr}</div>
+          <div style={{ marginTop: 6, fontWeight: 700, color: isFever ? '#B91C1C' : isConnected ? '#15803D' : '#64748B' }}>
             Overall: {getOverallStatus()}
           </div>
         </div>

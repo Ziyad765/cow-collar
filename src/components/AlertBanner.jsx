@@ -117,7 +117,7 @@ const ALERTS = {
   }
 };
 
-export default function AlertBanner({ healthStatus = 0, temp = 38.1, cowName = 'Cow #245' }) {
+export default function AlertBanner({ healthStatus = 0, temp = 38.1, cowName = 'Cow #245', isConnected = true }) {
   let effectiveStatus = Number(healthStatus) || 0;
   const numTemp = Number(temp);
 
@@ -127,7 +127,20 @@ export default function AlertBanner({ healthStatus = 0, temp = 38.1, cowName = '
     else if (numTemp < 37.8 && numTemp > 0) effectiveStatus = 2; // Low Temp
   }
 
-  const alert = ALERTS[effectiveStatus] || ALERTS[0];
+  const alert = !isConnected ? {
+    statusTag: 'Disconnected',
+    pillText: '○ Disconnected · Awaiting Collar',
+    pillColor: '#64748B',
+    pillBg: '#F1F5F9',
+    pillBorder: '#CBD5E1',
+    riskTitle: 'Device Disconnected',
+    riskSubtitle: 'No active BLE collar signal. Connect collar or tap Demo to test.',
+    cardBg: '#F8FAFC',
+    cardBorder: '#E2E8F0',
+    icon: AlertTriangle,
+    iconColor: '#64748B'
+  } : (ALERTS[effectiveStatus] || ALERTS[0]);
+
   const IconComponent = alert.icon;
 
   return (

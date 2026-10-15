@@ -190,12 +190,17 @@ class BleService {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {}
-    return this.generateDefault24hTimeline();
+    return [];
   }
 
   async connectRealDevice() {
     this.stopSimulator();
     this.realDeviceTimeline = []; // Reset real device timeline on new connection
+    this.isFlashLogsSynced = false;
+    try {
+      localStorage.removeItem('cow_collar_timeline_data');
+    } catch (e) {}
+    this.notifyTimelineListeners([]);
     this.addPacketLog('info', 'Initiating BLE connection to CowCollar_EdgeAI...');
 
     // 1. Native Capacitor BLE (Only on real native iOS/Android shell, not browser/Bluefy)

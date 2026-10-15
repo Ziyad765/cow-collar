@@ -75,44 +75,43 @@ const HERD_DATA = [
   }
 ];
 
+const BLANK_VITALS = {
+  temp: null,
+  bpm: null,
+  spo2: null,
+  rr: null,
+  rumination: null,
+  motion: 0,
+  health: 0,
+  bat: null,
+  conf: null,
+  contact: false,
+  hrv: null,
+  lying: false,
+  lyingMin: 0,
+  score: null,
+  trend: 0
+};
+
 export default function App() {
-  const [isConnected, setIsConnected] = useState(true); // Default connected for live experience
-  const [isSimulator, setIsSimulator] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isSimulator, setIsSimulator] = useState(false);
   const [selectedCowId, setSelectedCowId] = useState('245');
   const [activeSubTab, setActiveSubTab] = useState('live'); // 'live' | 'history' | 'insights'
   const [activeBottomNav, setActiveBottomNav] = useState('home'); // 'home' | 'cows' | 'alerts' | 'more'
   const [errorMsg, setErrorMsg] = useState('');
   const [timelineData, setTimelineData] = useState(() => bleService.getStoredTimelineData());
+  const [vitals, setVitals] = useState(BLANK_VITALS);
 
   const currentCow = HERD_DATA.find(c => c.id === selectedCowId) || HERD_DATA[0];
 
-  // Vitals State with defaults matching the uploaded presentation
-  const [vitals, setVitals] = useState({
-    temp: 38.6,
-    bpm: 68,
-    spo2: 98,
-    rr: 32,
-    rumination: 6.2,
-    motion: 1,
-    health: 1, // Start with Cow #245 showing mild fever risk as in Screenshot 2
-    bat: 94,
-    conf: 96,
-    contact: true,
-    hrv: 58,
-    lying: false,
-    lyingMin: 18,
-    score: 88,
-    trend: 0
-  });
-
   useEffect(() => {
-    // Start simulator automatically so web users immediately see live 6-Hz streaming!
-    bleService.startSimulator();
-
+    // Listen to live data stream and timeline logs without auto-starting simulator
     const unsubscribeLive = bleService.onData((res) => {
       if (res.status === 'disconnected') {
         setIsConnected(false);
         setIsSimulator(false);
+        setVitals(BLANK_VITALS);
       } else if (res.status === 'live' || res.status === 'simulator') {
         setIsConnected(true);
         setIsSimulator(res.status === 'simulator');
@@ -122,16 +121,14 @@ export default function App() {
           // Preserve specific diagnostic overrides if user tested anomaly
           temp: prev.overrideTemp !== undefined ? prev.overrideTemp : res.data.temp,
           health: prev.overrideHealth !== undefined ? prev.overrideHealth : res.data.health,
-          rr: res.data.rr || prev.rr || 32,
-          rumination: res.data.rumination || prev.rumination || 6.2
+          rr: res.data.rr || prev.rr || (res.status === 'simulator' ? 32 : null),
+          rumination: res.data.rumination || prev.rumination || (res.status === 'simulator' ? 6.2 : null)
         }));
       }
     });
 
     const unsubscribeTimeline = bleService.onTimelineData((data) => {
-      if (data && data.length > 0) {
-        setTimelineData(data);
-      }
+      setTimelineData(data || []);
     });
 
     return () => {
@@ -142,6 +139,8 @@ export default function App() {
 
   const handleConnectReal = async () => {
     setErrorMsg('');
+    setTimelineData([]);
+    setVitals(BLANK_VITALS);
     try {
       await bleService.connectRealDevice();
     } catch (err) {
@@ -154,18 +153,37 @@ export default function App() {
     bleService.startSimulator();
     setIsConnected(true);
     setIsSimulator(true);
+    setVitals({
+      temp: 38.6,
+      bpm: 68,
+      spo2: 98,
+      rr: 32,
+      rumination: 6.2,
+      motion: 1,
+      health: 1,
+      bat: 94,
+      conf: 96,
+      contact: true,
+      hrv: 58,
+      lying: false,
+      lyingMin: 18,
+      score: 88,
+      trend: 0
+    });
   };
 
   const handleDisconnect = () => {
     bleService.disconnect();
     setIsConnected(false);
     setIsSimulator(false);
+    setVitals(BLANK_VITALS);
+    setTimelineData([]);
   };
 
   const handleSelectCow = (id) => {
     setSelectedCowId(id);
     const cow = HERD_DATA.find(c => c.id === id);
-    if (cow && cow.defaultVitals) {
+    if (cow && isSimulator && cow.defaultVitals) {
       setVitals(v => ({
         ...v,
         ...cow.defaultVitals,
@@ -176,6 +194,12 @@ export default function App() {
   };
 
   const handleInjectAnomaly = (code) => {
+    if (!isConnected || !isSimulator) {
+      setIsConnected(true);
+      setIsSimulator(true);
+      bleService.startSimulator();
+    }
+
     if (code === 0) { // Normal
       setVitals(v => ({
         ...v,
@@ -288,6 +312,93 @@ export default function App() {
     }
   };
 
+  const getRealAlerts = () => {
+    if (!isConnected || isSimulator) return [];
+    const list = [];
+    if (vitals?.temp && vitals.temp > 39.5) {
+      list.push({
+        id: 'fever',
+        title: `${currentCow.name} · High Fever Alert (${vitals.temp}°C)`,
+        badge: 'Critical',
+        badgeColor: '#DC2626',
+        desc: `Core body temperature elevated to ${vitals.temp}°C. Probable infection or early subclinical mastitis. Inspect udder immediately.`,
+        bg: '#FEF2F2',
+        border: '#FCA5A5',
+        textColor: '#DC2626',
+        icon: ShieldAlert
+      });
+    }
+    if (vitals?.temp && vitals.temp < 37.8 && vitals.temp > 0) {
+      list.push({
+        id: 'hypocalcemia',
+        title: `${currentCow.name} · Calcium Deficiency / Hypothermia (${vitals.temp}°C)`,
+        badge: 'Urgent',
+        badgeColor: '#C2410C',
+        desc: `Post-partum core temperature drop detected (${vitals.temp}°C). Administer oral calcium gel and inspect recumbency.`,
+        bg: '#FFF7ED',
+        border: '#FDBA74',
+        textColor: '#C2410C',
+        icon: AlertTriangle
+      });
+    }
+    if (vitals?.health === 1 && !list.some(a => a.id === 'fever')) {
+      list.push({
+        id: 'mastitis',
+        title: `${currentCow.name} · Subclinical Mastitis Risk`,
+        badge: '48h Notice',
+        badgeColor: '#DC2626',
+        desc: 'Edge AI thermal and rumination pattern flags early subclinical mastitis (48h advance warning). Palpate quarters.',
+        bg: '#FEF2F2',
+        border: '#FCA5A5',
+        textColor: '#DC2626',
+        icon: ShieldAlert
+      });
+    }
+    if (vitals?.health === 3) {
+      list.push({
+        id: 'estrus',
+        title: `${currentCow.name} · Optimal Insemination Window (Estrus)`,
+        badge: '12h Window',
+        badgeColor: '#D97706',
+        desc: 'Restlessness and mobility increase (+180%) detected by collar IMU. Prime Artificial Insemination window active.',
+        bg: '#FEF3C7',
+        border: '#FDE68A',
+        textColor: '#D97706',
+        icon: Flame
+      });
+    }
+    if (vitals?.health === 4) {
+      list.push({
+        id: 'calving',
+        title: `${currentCow.name} · Calving Imminent`,
+        badge: '12-24h Notice',
+        badgeColor: '#6D28D9',
+        desc: 'Pre-delivery physiological shift detected. Prepare maternity pen and clean bedding.',
+        bg: '#F5F3FF',
+        border: '#DDD6FE',
+        textColor: '#6D28D9',
+        icon: Baby
+      });
+    }
+    if (vitals?.health === 5 || (vitals?.rr && vitals.rr > 40)) {
+      list.push({
+        id: 'resp',
+        title: `${currentCow.name} · Respiratory Distress (Tachypnea)`,
+        badge: 'High Watch',
+        badgeColor: '#DC2626',
+        desc: `Breathing rate elevated (${vitals?.rr || '>40'} /min). Check for Bovine Respiratory Disease (BRD) symptoms.`,
+        bg: '#FEF2F2',
+        border: '#FCA5A5',
+        textColor: '#DC2626',
+        icon: ShieldAlert
+      });
+    }
+    return list;
+  };
+
+  const realAlerts = getRealAlerts();
+  const alertCount = !isConnected ? 0 : isSimulator ? 3 : realAlerts.length;
+
   return (
     <div style={{
       display: 'flex',
@@ -301,7 +412,7 @@ export default function App() {
       <Header 
         isConnected={isConnected}
         isSimulator={isSimulator}
-        batteryLevel={vitals ? vitals.bat : 94}
+        batteryLevel={isConnected ? (vitals ? vitals.bat : 94) : null}
         onConnectReal={handleConnectReal}
         onToggleSimulator={handleToggleSimulator}
         onDisconnect={handleDisconnect}
@@ -341,7 +452,7 @@ export default function App() {
               onSelectCow={handleSelectCow}
               activeSubTab={activeSubTab}
               onTabChange={setActiveSubTab}
-              batteryPct={vitals ? vitals.bat : 94}
+              batteryPct={isConnected ? (vitals ? vitals.bat : 94) : null}
               onConnectReal={handleConnectReal}
               onToggleSimulator={handleToggleSimulator}
               onDisconnect={handleDisconnect}
@@ -352,32 +463,35 @@ export default function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }} className="fade-up">
                 {/* Alert Profile Strip & Health Status Banner (Screenshot 2) */}
                 <AlertBanner 
-                  healthStatus={vitals.health}
-                  temp={vitals.temp}
+                  healthStatus={isConnected ? (vitals ? vitals.health : 0) : 0}
+                  temp={isConnected ? (vitals ? vitals.temp : null) : null}
                   cowName={currentCow.name}
+                  isConnected={isConnected}
                 />
 
                 {/* 2x2 Primary Vitals Grid + Full Width Posture (Screenshot 1) */}
                 <VitalsGrid 
-                  temp={vitals.temp}
-                  bpm={vitals.bpm}
-                  spo2={vitals.spo2}
-                  rr={vitals.rr}
-                  ruminationHours={vitals.rumination}
-                  motionState={vitals.motion}
-                  skinContact={vitals.contact !== false}
-                  hrv={vitals.hrv}
-                  isLying={vitals.lying}
-                  lyingMin={vitals.lyingMin}
-                  healthScore={vitals.score}
-                  trend={vitals.trend}
+                  temp={isConnected ? (vitals ? vitals.temp : null) : null}
+                  bpm={isConnected ? (vitals ? vitals.bpm : null) : null}
+                  spo2={isConnected ? (vitals ? vitals.spo2 : null) : null}
+                  rr={isConnected ? (vitals ? vitals.rr : null) : null}
+                  ruminationHours={isConnected ? (vitals ? vitals.rumination : null) : null}
+                  motionState={isConnected ? (vitals ? vitals.motion : 0) : 0}
+                  skinContact={isConnected ? (vitals ? vitals.contact !== false : false) : false}
+                  hrv={isConnected ? (vitals ? vitals.hrv : null) : null}
+                  isLying={isConnected ? (vitals ? vitals.lying : false) : false}
+                  lyingMin={isConnected ? (vitals ? vitals.lyingMin : 0) : 0}
+                  healthScore={isConnected ? (vitals ? vitals.score : 0) : 0}
+                  trend={isConnected ? (vitals ? vitals.trend : 0) : 0}
+                  isConnected={isConnected}
                 />
 
                 {/* Real-time Dynamic 60fps ECG & SpO2 Waveforms */}
                 <IcuMonitorStrip 
-                  bpm={vitals.bpm}
-                  spo2={vitals.spo2}
-                  skinContact={vitals.contact !== false}
+                  bpm={isConnected ? (vitals ? vitals.bpm : null) : null}
+                  spo2={isConnected ? (vitals ? vitals.spo2 : null) : null}
+                  skinContact={isConnected ? (vitals ? vitals.contact !== false : false) : false}
+                  isConnected={isConnected}
                 />
               </div>
             )}
@@ -404,12 +518,13 @@ export default function App() {
                 <ClinicalDiagnosticSection />
                 <AnalyticsSection 
                   selectedCow={currentCow.name}
-                  temp={vitals.temp}
-                  bpm={vitals.bpm}
-                  rr={vitals.rr}
-                  ruminationHours={vitals.rumination}
-                  isLying={vitals.lying}
-                  healthStatus={vitals.health}
+                  temp={isConnected ? (vitals ? vitals.temp : null) : null}
+                  bpm={isConnected ? (vitals ? vitals.bpm : null) : null}
+                  rr={isConnected ? (vitals ? vitals.rr : null) : null}
+                  ruminationHours={isConnected ? (vitals ? vitals.rumination : null) : null}
+                  isLying={isConnected ? (vitals ? vitals.lying : false) : false}
+                  healthStatus={isConnected ? (vitals ? vitals.health : 0) : 0}
+                  isConnected={isConnected}
                 />
               </div>
             )}
@@ -428,8 +543,15 @@ export default function App() {
                   Kochi Union · Cooperative Tag #KL-07
                 </p>
               </div>
-              <span style={{ fontSize: 11, fontWeight: 700, background: '#DCFCE7', color: '#15803D', padding: '4px 10px', borderRadius: 99 }}>
-                All 4 Collars Online
+              <span style={{
+                fontSize: 11,
+                fontWeight: 700,
+                background: isConnected ? '#DCFCE7' : '#F1F5F9',
+                color: isConnected ? '#15803D' : '#64748B',
+                padding: '4px 10px',
+                borderRadius: 99
+              }}>
+                {isConnected ? (isSimulator ? '⚡ 4 Demo Collars' : '● Live Collar Paired') : '○ No Collar Paired'}
               </span>
             </div>
 
@@ -478,13 +600,13 @@ export default function App() {
                     <span style={{
                       fontSize: 10,
                       fontWeight: 800,
-                      color: cow.statusColor,
-                      background: cow.statusBg,
+                      color: isConnected ? cow.statusColor : '#64748B',
+                      background: isConnected ? cow.statusBg : '#F1F5F9',
                       padding: '3px 8px',
                       borderRadius: 99,
-                      border: `1px solid ${cow.statusColor}30`
+                      border: `1px solid ${isConnected ? cow.statusColor + '30' : '#CBD5E1'}`
                     }}>
-                      {cow.status}
+                      {isConnected ? cow.status : 'Awaiting Connection'}
                     </span>
                     <span style={{ fontSize: 11, color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 2 }}>
                       Inspect <ChevronRight size={14} />
@@ -505,88 +627,228 @@ export default function App() {
                   Active Veterinary Alerts
                 </h2>
                 <p style={{ fontSize: 12, color: '#64748B', margin: '2px 0 0' }}>
-                  Identified by Edge AI & Cloud Diagnostics
+                  {!isConnected 
+                    ? 'No Device Connected · Collar Signal Required'
+                    : isSimulator 
+                    ? 'Identified by Edge AI & Cloud Diagnostics (Demo Herd)' 
+                    : 'Live Telemetry Diagnostics · Real CowCollar'}
                 </p>
               </div>
-              <span style={{ fontSize: 11, fontWeight: 800, background: '#FEE2E2', color: '#DC2626', padding: '4px 10px', borderRadius: 99 }}>
-                3 Action Required
+              <span style={{
+                fontSize: 11,
+                fontWeight: 800,
+                background: alertCount > 0 ? '#FEE2E2' : '#ECFDF5',
+                color: alertCount > 0 ? '#DC2626' : '#059669',
+                padding: '4px 10px',
+                borderRadius: 99
+              }}>
+                {!isConnected ? '0 Alerts' : alertCount > 0 ? `${alertCount} Action Required` : '0 Alerts · All Normal'}
               </span>
             </div>
 
-            {/* Alert Item 1: Fever */}
-            <div 
-              onClick={() => { handleSelectCow('245'); handleInjectAnomaly(1); setActiveBottomNav('home'); }}
-              style={{
-                background: '#FEF2F2',
+            {/* CASE 1: NOT CONNECTED */}
+            {!isConnected && (
+              <div style={{
+                background: '#FFFFFF',
                 borderRadius: 20,
-                padding: '16px',
-                border: '1.5px solid #FCA5A5',
-                cursor: 'pointer'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <ShieldAlert size={16} /> Cow #245 · Subclinical Mastitis
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626', background: '#FFFFFF', padding: '2px 6px', borderRadius: 6 }}>
-                  48h Notice
-                </span>
+                padding: '28px 20px',
+                border: '1px solid #E2E8F0',
+                textAlign: 'center',
+                boxShadow: '0 4px 15px -2px rgba(15, 23, 42, 0.04)'
+              }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>🔔</div>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: '#0F172A', marginBottom: 4 }}>
+                  Device Not Connected
+                </h3>
+                <p style={{ fontSize: 12, color: '#64748B', maxWidth: 300, margin: '0 auto 16px', lineHeight: 1.4 }}>
+                  Connect a CowCollar via Bluetooth to receive real-time clinical alerts, or run Demo to view veterinary scenario simulations.
+                </p>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                  <button
+                    onClick={handleConnectReal}
+                    style={{
+                      padding: '10px 18px',
+                      borderRadius: 12,
+                      background: '#059669',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    <Bluetooth size={16} /> Scan Collar
+                  </button>
+                  <button
+                    onClick={handleToggleSimulator}
+                    style={{
+                      padding: '10px 18px',
+                      borderRadius: 12,
+                      background: '#F1F5F9',
+                      color: '#0F172A',
+                      border: '1px solid #CBD5E1',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⚡ Run Demo
+                  </button>
+                </div>
               </div>
-              <p style={{ fontSize: 12, color: '#7F1D1D', lineHeight: 1.4, margin: '0 0 8px' }}>
-                Body temperature elevated to <strong>39.8°C</strong> + rumination down by 45 minutes. Palpate right udder.
-              </p>
-              <span style={{ fontSize: 11, fontWeight: 800, color: '#DC2626' }}>Tap to view live telemetry →</span>
-            </div>
+            )}
 
-            {/* Alert Item 2: Milk Fever */}
-            <div 
-              onClick={() => { handleSelectCow('089'); handleInjectAnomaly(7); setActiveBottomNav('home'); }}
-              style={{
-                background: '#FFF7ED',
-                borderRadius: 20,
-                padding: '16px',
-                border: '1.5px solid #FDBA74',
-                cursor: 'pointer'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: '#C2410C', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <AlertTriangle size={16} /> Cow #089 · Calcium Deficiency Alert
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#C2410C', background: '#FFFFFF', padding: '2px 6px', borderRadius: 6 }}>
-                  Urgent
-                </span>
-              </div>
-              <p style={{ fontSize: 12, color: '#7C2D12', lineHeight: 1.4, margin: '0 0 8px' }}>
-                Post-partum temp drop (<strong>37.4°C</strong>) + continuous sternal recumbency (&gt;55m). Administer oral calcium gel now!
-              </p>
-              <span style={{ fontSize: 11, fontWeight: 800, color: '#C2410C' }}>Tap to view live telemetry →</span>
-            </div>
+            {/* CASE 2: REAL DEVICE CONNECTED (NO OLD MOCK ALERTS) */}
+            {isConnected && !isSimulator && (
+              <>
+                {realAlerts.length === 0 ? (
+                  <div style={{
+                    background: '#F0FDF4',
+                    borderRadius: 20,
+                    padding: '24px 18px',
+                    border: '1.5px solid #BBF7D0',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: '50%',
+                      background: '#DCFCE7',
+                      color: '#15803D',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 10px'
+                    }}>
+                      <CheckCircle size={28} />
+                    </div>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, color: '#166534', margin: '0 0 4px' }}>
+                      All Vitals Nominal · Zero Active Alerts
+                    </h3>
+                    <p style={{ fontSize: 12, color: '#15803D', margin: 0, lineHeight: 1.4 }}>
+                      Real-time telemetry from paired collar: {vitals?.temp ? `${vitals.temp}°C` : '--'}, {vitals?.bpm ? `${vitals.bpm} BPM` : '--'}.
+                      No fever, estrus spikes, or calcium anomalies detected.
+                    </p>
+                  </div>
+                ) : (
+                  realAlerts.map(alert => {
+                    const IconComp = alert.icon;
+                    return (
+                      <div
+                        key={alert.id}
+                        style={{
+                          background: alert.bg,
+                          borderRadius: 20,
+                          padding: '16px',
+                          border: `1.5px solid ${alert.border}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: alert.textColor, display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <IconComp size={16} /> {alert.title}
+                          </span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: alert.textColor, background: '#FFFFFF', padding: '2px 6px', borderRadius: 6 }}>
+                            {alert.badge}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: 12, color: alert.textColor, lineHeight: 1.4, margin: '0 0 8px' }}>
+                          {alert.desc}
+                        </p>
+                        <span
+                          onClick={() => { setActiveBottomNav('home'); setActiveSubTab('live'); }}
+                          style={{ fontSize: 11, fontWeight: 800, color: alert.textColor, cursor: 'pointer' }}
+                        >
+                          View live telemetry →
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </>
+            )}
 
-            {/* Alert Item 3: Calving */}
-            <div 
-              onClick={() => { handleSelectCow('104'); handleInjectAnomaly(4); setActiveBottomNav('home'); }}
-              style={{
-                background: '#F5F3FF',
-                borderRadius: 20,
-                padding: '16px',
-                border: '1.5px solid #DDD6FE',
-                cursor: 'pointer'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: '#6D28D9', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <Baby size={16} /> Cow #104 · Calving Pre-Delivery Alert
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#6D28D9', background: '#FFFFFF', padding: '2px 6px', borderRadius: 6 }}>
-                  12-24h
-                </span>
-              </div>
-              <p style={{ fontSize: 12, color: '#4C1D95', lineHeight: 1.4, margin: '0 0 8px' }}>
-                Pre-partum 0.6°C temperature drop detected (37.6°C). Delivery imminent. Prepare maternity pen.
-              </p>
-              <span style={{ fontSize: 11, fontWeight: 800, color: '#6D28D9' }}>Tap to view live telemetry →</span>
-            </div>
+            {/* CASE 3: DEMO SIMULATOR ACTIVE */}
+            {isConnected && isSimulator && (
+              <>
+                {/* Alert Item 1: Fever */}
+                <div 
+                  onClick={() => { handleSelectCow('245'); handleInjectAnomaly(1); setActiveBottomNav('home'); }}
+                  style={{
+                    background: '#FEF2F2',
+                    borderRadius: 20,
+                    padding: '16px',
+                    border: '1.5px solid #FCA5A5',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <ShieldAlert size={16} /> Cow #245 · Subclinical Mastitis
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626', background: '#FFFFFF', padding: '2px 6px', borderRadius: 6 }}>
+                      48h Notice
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: '#7F1D1D', lineHeight: 1.4, margin: '0 0 8px' }}>
+                    Body temperature elevated to <strong>39.8°C</strong> + rumination down by 45 minutes. Palpate right udder.
+                  </p>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#DC2626' }}>Tap to inject & view live telemetry →</span>
+                </div>
+
+                {/* Alert Item 2: Milk Fever */}
+                <div 
+                  onClick={() => { handleSelectCow('089'); handleInjectAnomaly(7); setActiveBottomNav('home'); }}
+                  style={{
+                    background: '#FFF7ED',
+                    borderRadius: 20,
+                    padding: '16px',
+                    border: '1.5px solid #FDBA74',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#C2410C', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <AlertTriangle size={16} /> Cow #089 · Calcium Deficiency Alert
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#C2410C', background: '#FFFFFF', padding: '2px 6px', borderRadius: 6 }}>
+                      Urgent
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: '#7C2D12', lineHeight: 1.4, margin: '0 0 8px' }}>
+                    Post-partum temp drop (<strong>37.4°C</strong>) + continuous sternal recumbency (&gt;55m). Administer oral calcium gel now!
+                  </p>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#C2410C' }}>Tap to inject & view live telemetry →</span>
+                </div>
+
+                {/* Alert Item 3: Calving */}
+                <div 
+                  onClick={() => { handleSelectCow('104'); handleInjectAnomaly(4); setActiveBottomNav('home'); }}
+                  style={{
+                    background: '#F5F3FF',
+                    borderRadius: 20,
+                    padding: '16px',
+                    border: '1.5px solid #DDD6FE',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#6D28D9', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <Baby size={16} /> Cow #104 · Calving Pre-Delivery Alert
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#6D28D9', background: '#FFFFFF', padding: '2px 6px', borderRadius: 6 }}>
+                      12-24h
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: '#4C1D95', lineHeight: 1.4, margin: '0 0 8px' }}>
+                    Pre-partum 0.6°C temperature drop detected (37.6°C). Delivery imminent. Prepare maternity pen.
+                  </p>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#6D28D9' }}>Tap to inject & view live telemetry →</span>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -626,7 +888,7 @@ export default function App() {
       <BottomNavBar 
         activeTab={activeBottomNav}
         onSelectTab={setActiveBottomNav}
-        alertCount={3}
+        alertCount={alertCount}
       />
     </div>
   );

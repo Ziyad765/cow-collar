@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Activity, Heart, Wind } from 'lucide-react';
 
-export default function IcuMonitorStrip({ bpm = 68, spo2 = 98, skinContact = true }) {
+export default function IcuMonitorStrip({ bpm = 68, spo2 = 98, skinContact = true, isConnected = true }) {
   const ecgRef = useRef(null);
   const spo2Ref = useRef(null);
   const ecgAnimRef = useRef(null);
@@ -18,7 +18,7 @@ export default function IcuMonitorStrip({ bpm = 68, spo2 = 98, skinContact = tru
   useEffect(() => {
     let frame;
     let start = displayBpm;
-    let target = skinContact ? bpm : 0;
+    let target = (isConnected && skinContact) ? bpm : 0;
     const step = () => {
       start += (target - start) * 0.15;
       setDisplayBpm(Math.round(start));
@@ -27,12 +27,12 @@ export default function IcuMonitorStrip({ bpm = 68, spo2 = 98, skinContact = tru
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [bpm, skinContact]);
+  }, [bpm, skinContact, isConnected]);
 
   useEffect(() => {
     let frame;
     let start = displaySpo2;
-    let target = skinContact ? spo2 : 0;
+    let target = (isConnected && skinContact) ? spo2 : 0;
     const step = () => {
       start += (target - start) * 0.15;
       setDisplaySpo2(Math.round(start));
@@ -58,7 +58,7 @@ export default function IcuMonitorStrip({ bpm = 68, spo2 = 98, skinContact = tru
 
     const draw = () => {
       let voltage = 0;
-      if (skinContact && bpm > 0) {
+      if (isConnected && skinContact && bpm > 0) {
         // Calculate beat period in ms dynamically from BPM
         const beatPeriod = (60 / bpm) * 1000;
         const now = performance.now();
@@ -234,13 +234,13 @@ export default function IcuMonitorStrip({ bpm = 68, spo2 = 98, skinContact = tru
           <span style={{
             fontSize: 10,
             fontWeight: 700,
-            color: skinContact ? '#059669' : '#D97706',
-            background: skinContact ? '#ECFDF5' : '#FEF3C7',
+            color: !isConnected ? '#64748B' : skinContact ? '#059669' : '#D97706',
+            background: !isConnected ? '#F1F5F9' : skinContact ? '#ECFDF5' : '#FEF3C7',
             padding: '3px 8px',
             borderRadius: 99,
-            border: `1px solid ${skinContact ? '#A7F3D0' : '#FDE68A'}`
+            border: `1px solid ${!isConnected ? '#CBD5E1' : skinContact ? '#A7F3D0' : '#FDE68A'}`
           }}>
-            {skinContact ? '● Live Fur-Penetration Active' : '⚠️ Collar Unattached'}
+            {!isConnected ? '○ Device Disconnected' : skinContact ? '● Live Optical Waveform Active' : '⚠️ Collar Unattached'}
           </span>
         </div>
 
@@ -255,8 +255,8 @@ export default function IcuMonitorStrip({ bpm = 68, spo2 = 98, skinContact = tru
               <div style={{ fontSize: 10, fontWeight: 700, color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
                 <Heart size={10} fill="#10B981" /> ECG
               </div>
-              <div style={{ fontSize: 28, fontWeight: 800, color: skinContact ? '#34D399' : '#475569', lineHeight: 1, fontFamily: 'monospace' }}>
-                {skinContact ? displayBpm : '--'}
+              <div style={{ fontSize: 28, fontWeight: 800, color: isConnected && skinContact ? '#34D399' : '#475569', lineHeight: 1, fontFamily: 'monospace' }}>
+                {isConnected && skinContact ? displayBpm : '--'}
               </div>
               <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600, marginTop: 2 }}>BPM</div>
             </div>
@@ -271,8 +271,8 @@ export default function IcuMonitorStrip({ bpm = 68, spo2 = 98, skinContact = tru
               <div style={{ fontSize: 10, fontWeight: 700, color: '#06B6D4', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
                 <Wind size={10} /> SpO₂
               </div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: skinContact ? '#22D3EE' : '#475569', lineHeight: 1, fontFamily: 'monospace' }}>
-                {skinContact ? `${displaySpo2}%` : '--'}
+              <div style={{ fontSize: 24, fontWeight: 800, color: isConnected && skinContact ? '#22D3EE' : '#475569', lineHeight: 1, fontFamily: 'monospace' }}>
+                {isConnected && skinContact ? `${displaySpo2}%` : '--'}
               </div>
             </div>
           </div>

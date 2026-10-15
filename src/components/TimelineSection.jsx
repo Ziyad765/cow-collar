@@ -2,7 +2,28 @@ import React from 'react';
 import { Moon, Sunrise, Sun, ShieldCheck, Flame } from 'lucide-react';
 
 export default function TimelineSection({ timelineData = [] }) {
-  if (!timelineData || timelineData.length === 0) return null;
+  if (!timelineData || timelineData.length === 0) {
+    return (
+      <div style={{ padding: '0 16px' }}>
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: 20,
+          padding: '24px 16px',
+          border: '1px solid #E2E8F0',
+          textAlign: 'center',
+          boxShadow: '0 4px 15px -2px rgba(15, 23, 42, 0.04)'
+        }}>
+          <div style={{ fontSize: 28, marginBottom: 6 }}>💾</div>
+          <h4 style={{ fontSize: 14, fontWeight: 800, color: '#0F172A', marginBottom: 4 }}>
+            No Historical Flash Logs Synced
+          </h4>
+          <p style={{ fontSize: 11, color: '#64748B', maxWidth: 280, margin: '0 auto', lineHeight: 1.4 }}>
+            Connect a CowCollar via Bluetooth to sync the 24-hour offline SPIFFS flash memory, or run Demo to view sample logs.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const alerts = timelineData.filter(d => d.health > 0);
 
